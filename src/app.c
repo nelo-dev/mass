@@ -34,7 +34,11 @@ void init_config()
     add_comment(CFG_PATH, "Server Name");
     add_param(CFG_PATH, "server_name", "mass");
     add_comment(CFG_PATH, "Server Icon (must be placed in folder public/resources)");
-    add_param(CFG_PATH, "server_icon", "public/resources/placeholder_icon.png");
+    add_param(CFG_PATH, "server_icon", "resources/placeholder_icon.png");
+    add_comment(CFG_PATH, "Download Threads (concurrent media download count)");
+    add_param(CFG_PATH, "dl_thread_cnt", "8");
+    add_comment(CFG_PATH, "Max Download Queue Count (max elements pending in download queue)");
+    add_param(CFG_PATH, "dl_queue_size", "64");
 }
 
 App create_app()
@@ -59,6 +63,20 @@ App create_app()
     folder_create(db_path);
     app->db = create_and_open_db(db_path, db_cache);
 
+    int dl_thread_cnt = 0;
+    if (get_param_int(CFG_PATH, "dl_thread_cnt", &dl_thread_cnt) == -1 || dl_thread_cnt < 0) {
+        fprintf(stderr, "Error: Invalid or missing dl_threaf_cnt configuration. Using default value of 8.\n");
+        dl_thread_cnt = 8;
+    }
+
+    int dl_queue_size = 0;
+    if (get_param_int(CFG_PATH, "dl_queue_size", &dl_queue_size) == -1 || dl_queue_size < 0) {
+        fprintf(stderr, "Error: Invalid or missing dl_queue_size configuration. Using default value of 64.\n");
+        dl_queue_size = 64;
+    }
+
+    app->dl = downloader_create(dl_thread_cnt, dl_queue_size);
+
     generate_random_string(app->jwt_secret, 31);
 
     if (get_param_string(CFG_PATH, "server_name", app->server_name, 128) == -1) {
@@ -68,7 +86,7 @@ App create_app()
 
     if (get_param_string(CFG_PATH, "server_icon", app->icon_path, 256) == -1) {
         fprintf(stderr, "Error: Invalid or missing server_icon path. Using default placeholder icon.\n");
-        strcpy(app->icon_path, "public/resources/placeholder_icon.png");
+        strcpy(app->icon_path, "resources/placeholder_icon.png");
     }
 
     int port = 0;
@@ -117,6 +135,8 @@ void run_app(App app)
 void destroy_app(App app)
 {
     stop_webserver(app->daemon);
+    downloader_stop(app->dl);
+    downloader_destroy(app->dl);
     close_db(app->db);
     free(app);
 }

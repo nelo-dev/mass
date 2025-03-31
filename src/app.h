@@ -3,6 +3,7 @@
 
 #include "lib/config.h"
 #include "lib/filelib.h"
+#include "lib/downloader.h"
 #include "microhttpd.h"
 #include "sqlite3.h"
 
@@ -11,6 +12,7 @@
 
 typedef struct App_t {
     struct MHD_Daemon *daemon;
+    Downloader * dl;
     sqlite3 * db;
     char jwt_secret[32];
     char server_name[128];

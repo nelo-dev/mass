@@ -391,7 +391,7 @@ struct MHD_Daemon *start_webserver(int port, char *key_path, char *crt_path, App
     }
 
     if (key && crt) {
-        printf("Starting server with SSL on https://localhost:%d\n", port);
+        printf("Starting server with SSL on \033[0;32mhttps://localhost:%d\033[0m\n", port);
         daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY | MHD_USE_TLS, port, NULL, NULL, &request_handler, app,
                                   MHD_OPTION_HTTPS_MEM_KEY, key,
                                   MHD_OPTION_HTTPS_MEM_CERT, crt,

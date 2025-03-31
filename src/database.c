@@ -21,34 +21,46 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         return NULL;
     }
 
-    // Configure PRAGMA settings
+    // Configure PRAGMA settings for optimization
     sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA mmap_size=268435456;", NULL, NULL, NULL);
-    int cache_size_pages = (cache_size_mb * 1024 * 1024) / 4096;
     char sql_cache[64];
-    snprintf(sql_cache, sizeof(sql_cache), "PRAGMA cache_size=%d;", -cache_size_pages);
+    snprintf(sql_cache, sizeof(sql_cache), "PRAGMA cache_size=%d;", -(cache_size_mb * 1024 * 1024) / 4096);
     sqlite3_exec(db, sql_cache, NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA temp_store=MEMORY;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA auto_vacuum=FULL;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA page_size=4096;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA optimize;", NULL, NULL, NULL);
 
-    char *err_msg = NULL;
+    const char *sql[] = {
+        "CREATE TABLE IF NOT EXISTS profile_pics (profile_id INTEGER PRIMARY KEY AUTOINCREMENT, profile_img_path TEXT NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS user (user_id INTEGER PRIMARY KEY AUTOINCREMENT, user_name TEXT UNIQUE NOT NULL, user_password TEXT NOT NULL, profile_id INTEGER, FOREIGN KEY(profile_id) REFERENCES profile_pics(profile_id) ON DELETE SET NULL);",
+        "CREATE TABLE IF NOT EXISTS collections (collection_id INTEGER PRIMARY KEY AUTOINCREMENT, collection_name TEXT NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS media (media_id INTEGER PRIMARY KEY AUTOINCREMENT, collection_id INTEGER, url TEXT UNIQUE NOT NULL, preview_url TEXT UNIQUE NOT NULL, path TEXT UNIQUE NOT NULL, preview_path TEXT UNIQUE NOT NULL, artist TEXT, score INTEGER, web_id INTEGER, FOREIGN KEY(collection_id) REFERENCES collections(collection_id) ON DELETE CASCADE);",
+        "CREATE TABLE IF NOT EXISTS tags (tag_id INTEGER PRIMARY KEY AUTOINCREMENT, tag_name TEXT NOT NULL UNIQUE, tag_cnt INTEGER DEFAULT 0);",
+        "CREATE TABLE IF NOT EXISTS media_tags (media_id INTEGER, tag_id INTEGER, PRIMARY KEY (media_id, tag_id), FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE, FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE);",
+        
+        // Create indexes to improve query performance
+        "CREATE INDEX IF NOT EXISTS idx_media_collection_id ON media(collection_id);",
+        "CREATE INDEX IF NOT EXISTS idx_media_score ON media(score);",
+        "CREATE INDEX IF NOT EXISTS idx_media_web_id ON media(web_id);",
+        "CREATE INDEX IF NOT EXISTS idx_tag_name ON tags(tag_name);",
+        "CREATE INDEX IF NOT EXISTS idx_tag_cnt ON tags(tag_cnt);",
+        "CREATE INDEX IF NOT EXISTS idx_mediatags_media_id ON media_tags(media_id);",
+        "CREATE INDEX IF NOT EXISTS idx_mediatags_tag_id ON media_tags(tag_id);"
+    };
 
-    // Create the users table with an additional profile_pic_id column.
-    // The profile_pic_id column is a foreign key referencing the profile_pics table.
-    const char *sql_create_users_table =
-        "CREATE TABLE IF NOT EXISTS users ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "name TEXT UNIQUE NOT NULL, "
-        "password TEXT NOT NULL "
-        ");";
-
-    rc = sqlite3_exec(db, sql_create_users_table, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to create users table: %s\n", err_msg);
-        sqlite3_free(err_msg);
+    // Execute all SQL statements in the array
+    for (int i = 0; i < sizeof(sql) / sizeof(sql[0]); ++i) {
+        char *err_msg = NULL;
+        rc = sqlite3_exec(db, sql[i], NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            fprintf(stderr, "SQL error: %s\n", err_msg);
+            sqlite3_free(err_msg);
+            sqlite3_close(db);
+            return NULL;
+        }
     }
 
     return db;
@@ -117,7 +129,7 @@ char* register_user(sqlite3 *db, const char *input_json) {
     bin_to_hex(hash, HASH_SIZE, hash_hex);
 
     char sql[512];
-    snprintf(sql, sizeof(sql), "INSERT INTO users (name, password) VALUES ('%s', '%s:%s');", name, salt_hex, hash_hex);
+    snprintf(sql, sizeof(sql), "INSERT INTO user (user_name, user_password) VALUES ('%s', '%s:%s');", name, salt_hex, hash_hex);
 
     char *err_msg = NULL;
     if (sqlite3_exec(db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
@@ -144,7 +156,7 @@ char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, ch
     }
 
     char sql[256];
-    snprintf(sql, sizeof(sql), "SELECT password FROM users WHERE name='%s';", name);
+    snprintf(sql, sizeof(sql), "SELECT user_password FROM user WHERE user_name='%s';", name);
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK) {
         json_decref(root);
@@ -189,7 +201,7 @@ char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, ch
 
 char* get_user_json(sqlite3 *db, const char *username) {
     sqlite3_stmt *stmt;
-    const char *sql = "SELECT id, name FROM users WHERE name = ?;";
+    const char *sql = "SELECT user_id, user_name FROM user WHERE user_name = ?;";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return strdup("{\"error\": \"Failed to prepare query\"}");
 
