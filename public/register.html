@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <script>
+        updateTitleAndFavicon();
+
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST',});
+
+                if (!response.ok) { throw new Error('Network response was not ok'); }
+
+                const data = await response.json();
+                const favicon = document.getElementById('favicon');
+                favicon.href = data.icon_path;
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        }
+
+        async function register(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById("name").value;
+            const password = document.getElementById("password").value;
+            const messageDiv = document.getElementById("message");
+            
+            const response = await fetch("/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, password })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === "success") {
+                window.location.href = "/login";
+            } else {
+                messageDiv.textContent = data.message;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h2>Register</h2>
+    <form onsubmit="register(event)">
+        <label for="name">Username:</label>
+        <input type="text" id="name" name="name" required><br>
+        
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required><br>
+        
+        <button type="submit">Register</button>
+    </form>
+    <div id="message"></div>
+    
+    <p>Already have an account? <a href="/login">Login</a></p>
+</body>
+</html>

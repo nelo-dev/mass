@@ -54,7 +54,7 @@
 vgcore.*
 
 # Linux Exec
-subroutine
+mass
 
 # Database
 *.db
