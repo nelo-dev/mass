@@ -21,46 +21,117 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         return NULL;
     }
 
-    // Configure PRAGMA settings for optimization
-    sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA mmap_size=268435456;", NULL, NULL, NULL);
+    const char *pragmas[] = {
+        "PRAGMA journal_mode=WAL;",
+        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA mmap_size=268435456;",
+        "PRAGMA temp_store=MEMORY;",
+        "PRAGMA auto_vacuum=FULL;",
+        "PRAGMA page_size=4096;",
+        "PRAGMA optimize;"
+    };
+
+    for (size_t i = 0; i < sizeof(pragmas) / sizeof(pragmas[0]); i++) {
+        sqlite3_exec(db, pragmas[i], NULL, NULL, NULL);
+    }
+
     char sql_cache[64];
     snprintf(sql_cache, sizeof(sql_cache), "PRAGMA cache_size=%d;", -(cache_size_mb * 1024 * 1024) / 4096);
     sqlite3_exec(db, sql_cache, NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA temp_store=MEMORY;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA auto_vacuum=FULL;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA page_size=4096;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA optimize;", NULL, NULL, NULL);
 
-    const char *sql[] = {
-        "CREATE TABLE IF NOT EXISTS profile_pics (profile_id INTEGER PRIMARY KEY AUTOINCREMENT, profile_img_path TEXT NOT NULL);",
-        "CREATE TABLE IF NOT EXISTS user (user_id INTEGER PRIMARY KEY AUTOINCREMENT, user_name TEXT UNIQUE NOT NULL, user_password TEXT NOT NULL, profile_id INTEGER, FOREIGN KEY(profile_id) REFERENCES profile_pics(profile_id) ON DELETE SET NULL);",
-        "CREATE TABLE IF NOT EXISTS collections (collection_id INTEGER PRIMARY KEY AUTOINCREMENT, collection_name TEXT NOT NULL);",
-        "CREATE TABLE IF NOT EXISTS media (media_id INTEGER PRIMARY KEY AUTOINCREMENT, collection_id INTEGER, url TEXT UNIQUE NOT NULL, preview_url TEXT UNIQUE NOT NULL, path TEXT UNIQUE NOT NULL, preview_path TEXT UNIQUE NOT NULL, artist TEXT, score INTEGER, web_id INTEGER, FOREIGN KEY(collection_id) REFERENCES collections(collection_id) ON DELETE CASCADE);",
-        "CREATE TABLE IF NOT EXISTS tags (tag_id INTEGER PRIMARY KEY AUTOINCREMENT, tag_name TEXT NOT NULL UNIQUE, tag_cnt INTEGER DEFAULT 0);",
-        "CREATE TABLE IF NOT EXISTS media_tags (media_id INTEGER, tag_id INTEGER, PRIMARY KEY (media_id, tag_id), FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE, FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE);",
-        
-        // Create indexes to improve query performance
+    const char *tables[] = {
+        "CREATE TABLE IF NOT EXISTS profile_pics ("
+        "profile_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "profile_img_path TEXT NOT NULL);",
+
+        "CREATE TABLE IF NOT EXISTS roles ("
+        "role_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "role_name TEXT UNIQUE NOT NULL);",
+
+        "CREATE TABLE IF NOT EXISTS user ("
+        "user_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_name TEXT UNIQUE NOT NULL, "
+        "user_password TEXT NOT NULL, "
+        "profile_id INTEGER, "
+        "role_id INTEGER, "
+        "FOREIGN KEY(profile_id) REFERENCES profile_pics(profile_id) ON DELETE SET NULL, "
+        "FOREIGN KEY(role_id) REFERENCES roles(role_id) ON DELETE SET NULL);",
+
+        "CREATE TABLE IF NOT EXISTS collections ("
+        "collection_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "collection_name TEXT NOT NULL);",
+
+        "CREATE TABLE IF NOT EXISTS media ("
+        "media_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "collection_id INTEGER, "
+        "url TEXT UNIQUE NOT NULL, "
+        "preview_url TEXT UNIQUE NOT NULL, "
+        "path TEXT UNIQUE NOT NULL, "
+        "preview_path TEXT UNIQUE NOT NULL, "
+        "title TEXT, "
+        "creator TEXT, "
+        "score INTEGER, "
+        "web_id INTEGER, "
+        "FOREIGN KEY(collection_id) REFERENCES collections(collection_id) ON DELETE CASCADE);",
+
+        "CREATE TABLE IF NOT EXISTS tags ("
+        "tag_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "tag_name TEXT NOT NULL UNIQUE);",
+
+        "CREATE TABLE IF NOT EXISTS media_tags ("
+        "media_id INTEGER, "
+        "tag_id INTEGER, "
+        "PRIMARY KEY (media_id, tag_id), "
+        "FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE);",
+
+        "CREATE TABLE IF NOT EXISTS api_keys ("
+        "api_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_id INTEGER NOT NULL, "
+        "api_key TEXT UNIQUE NOT NULL, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "is_active INTEGER DEFAULT 1, "
+        "FOREIGN KEY(user_id) REFERENCES user(user_id) ON DELETE CASCADE);"
+    };
+
+    // Index creation queries
+    const char *indexes[] = {
         "CREATE INDEX IF NOT EXISTS idx_media_collection_id ON media(collection_id);",
         "CREATE INDEX IF NOT EXISTS idx_media_score ON media(score);",
         "CREATE INDEX IF NOT EXISTS idx_media_web_id ON media(web_id);",
         "CREATE INDEX IF NOT EXISTS idx_tag_name ON tags(tag_name);",
         "CREATE INDEX IF NOT EXISTS idx_tag_cnt ON tags(tag_cnt);",
         "CREATE INDEX IF NOT EXISTS idx_mediatags_media_id ON media_tags(media_id);",
-        "CREATE INDEX IF NOT EXISTS idx_mediatags_tag_id ON media_tags(tag_id);"
+        "CREATE INDEX IF NOT EXISTS idx_mediatags_tag_id ON media_tags(tag_id);",
+        "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);",
+        "CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active);",
+        "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);"
     };
 
-    // Execute all SQL statements in the array
-    for (int i = 0; i < sizeof(sql) / sizeof(sql[0]); ++i) {
+    // Default role insertion queries
+    const char *default_roles[] = {
+        "INSERT INTO roles (role_name) VALUES ('owner') ON CONFLICT(role_name) DO NOTHING;",
+        "INSERT INTO roles (role_name) VALUES ('admin') ON CONFLICT(role_name) DO NOTHING;",
+        "INSERT INTO roles (role_name) VALUES ('visitor') ON CONFLICT(role_name) DO NOTHING;"
+    };
+
+    for (size_t i = 0; i < sizeof(tables) / sizeof(tables[0]); i++) {
         char *err_msg = NULL;
-        rc = sqlite3_exec(db, sql[i], NULL, NULL, &err_msg);
+        rc = sqlite3_exec(db, tables[i], NULL, NULL, &err_msg);
         if (rc != SQLITE_OK) {
             fprintf(stderr, "SQL error: %s\n", err_msg);
             sqlite3_free(err_msg);
             sqlite3_close(db);
             return NULL;
         }
+    }
+
+    for (size_t i = 0; i < sizeof(indexes) / sizeof(indexes[0]); i++) {
+        sqlite3_exec(db, indexes[i], NULL, NULL, NULL);
+    }
+
+    for (size_t i = 0; i < sizeof(default_roles) / sizeof(default_roles[0]); i++) {
+        sqlite3_exec(db, default_roles[i], NULL, NULL, NULL);
     }
 
     return db;
