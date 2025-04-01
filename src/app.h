@@ -17,6 +17,8 @@ typedef struct App_t {
     char jwt_secret[32];
     char server_name[128];
     char icon_path[256];
+    char profile_path[256];
+    int max_profile_size;
 } App_t;
 
 typedef App_t * App;

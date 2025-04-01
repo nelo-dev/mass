@@ -5,17 +5,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>loading ...</title>
+</head>
+<body>
+    <div>
+        <img id="profile-pic" width="100" height="100" alt="Profile Picture">
+        <div>
+            <h1 id="welcome">Loading...</h1>
+            <h3 id="role">Role: Loading...</h3>
+        </div>
+    </div>
+    <div>
+        <form id="upload-form">
+            <input type="file" id="profile-upload" accept="image/jpeg,image/png,image/gif">
+            <button type="button" onclick="uploadProfilePicture()">Upload Profile Picture</button>
+        </form>
+        <div id="upload-warning"></div>
+    </div>
+    <button onclick="logout()">Logout</button>
+
     <script>
         async function updateTitleAndFavicon() {
             try {
-                const response = await fetch('/info', { method: 'POST',});
-
-                if (!response.ok) { throw new Error('Network response was not ok'); }
-
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
                 document.title = data.server_name;
-                const favicon = document.getElementById('favicon');
-                favicon.href = data.icon_path;
+                document.getElementById('favicon').href = data.icon_path;
             } catch (error) {
                 console.error('There was a problem with the fetch operation:', error);
             }
@@ -24,16 +39,15 @@
         document.addEventListener("DOMContentLoaded", async () => {
             try {
                 const response = await fetch("/user", { method: "POST" });
-                if (!response.ok) {
-                    throw new Error("Failed to fetch user data");
-                }
+                if (!response.ok) throw new Error("Failed to fetch user data");
                 const data = await response.json();
                 document.getElementById("welcome").textContent = `Welcome, ${data.name} with ID ${data.id}!`;
+                document.getElementById("role").textContent = `Role: ${data.role}`;
+                document.getElementById("profile-pic").src = data.profile_picture;
             } catch (error) {
                 console.error("Error fetching user data:", error);
                 window.location.href = "/login";
             }
-
             updateTitleAndFavicon();
         });
 
@@ -42,10 +56,80 @@
                 .then(() => window.location.href = "/login")
                 .catch(error => console.error("Error logging out:", error));
         }
+
+        function uploadProfilePicture() {
+            const warning = document.getElementById("upload-warning");
+            const fileInput = document.getElementById("profile-upload");
+
+            // Clear previous warning and set default color to red
+            warning.textContent = "";
+
+            // Check if a file is selected
+            if (!fileInput.files.length) {
+                warning.textContent = "Please select a file";
+                return;
+            }
+
+            // Define file and extract extension
+            const file = fileInput.files[0];
+            const fileName = file.name;
+            const extension = fileName.split('.').pop().toLowerCase();
+
+            // Optional: Validate file type (reinforces HTML accept attribute)
+            if (!['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
+                warning.textContent = "Invalid file type. Only JPG, PNG, and GIF are allowed.";
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const xhr = new XMLHttpRequest();
+                xhr.open("POST", `/profile?filename=profile.${extension}`, true);
+                xhr.setRequestHeader("Content-Type", `image/${extension === 'jpg' || extension === 'jpeg' ? 'jpeg' : extension}`);
+
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === XMLHttpRequest.DONE) {
+                        if (xhr.status === 200) {
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                if (data.status === "success") {
+                                    // Success: set message to green and refresh profile picture
+                                    warning.textContent = data.message;
+                                    const profilePic = document.getElementById("profile-pic");
+                                    profilePic.src = profilePic.src.split('?')[0] + "?t=" + new Date().getTime();
+                                } else {
+                                    // Unexpected success response format
+                                    warning.textContent = data.error || "Upload failed";
+                                }
+                            } catch (err) {
+                                // Invalid JSON response
+                                warning.textContent = "Invalid response from server";
+                            }
+                        } else {
+                            // Non-200 status
+                            try {
+                                const data = xhr.responseText ? JSON.parse(xhr.responseText) : { error: "Upload failed" };
+                                warning.textContent = data.error || "Upload failed";
+                            } catch (err) {
+                                warning.textContent = "Upload failed";
+                            }
+                        }
+                    }
+                };
+
+                xhr.onerror = function() {
+                    warning.textContent = "Failed to upload profile picture: Network error";
+                };
+
+                xhr.send(e.target.result);
+            };
+
+            reader.onerror = function() {
+                warning.textContent = "Failed to read file";
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
     </script>
-</head>
-<body>
-    <h1 id="welcome">Loading...</h1>
-    <button onclick="logout()">Logout</button>
 </body>
 </html>

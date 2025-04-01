@@ -191,6 +191,52 @@ char* register_user(sqlite3 *db, const char *input_json) {
         return strdup("{\"status\":\"error\", \"message\":\"Invalid username format. Only letters, numbers, _ and - are allowed.\"}");
     }
 
+    // Begin transaction
+    sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+
+    // Insert default profile picture
+    const char *default_pic = "resources/default_user.png";
+    char profile_sql[256];
+    snprintf(profile_sql, sizeof(profile_sql), 
+             "INSERT INTO profile_pics (profile_img_path) VALUES ('%s');", 
+             default_pic);
+    
+    if (sqlite3_exec(db, profile_sql, NULL, NULL, NULL) != SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        json_decref(root);
+        return strdup("{\"status\":\"error\", \"message\":\"Failed to set profile picture\"}");
+    }
+
+    // Get the last inserted profile_id
+    sqlite3_int64 profile_id = sqlite3_last_insert_rowid(db);
+
+    // Check if this is the first user
+    int is_first_user = 0;
+    sqlite3_stmt *stmt;
+    const char *count_sql = "SELECT COUNT(*) FROM user;";
+    if (sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            is_first_user = (sqlite3_column_int(stmt, 0) == 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    // Get role_id for either 'owner' or 'visitor'
+    const char *role_name = is_first_user ? "owner" : "visitor";
+    sqlite3_int64 role_id = 0;
+    char role_sql[128];
+    snprintf(role_sql, sizeof(role_sql), 
+             "SELECT role_id FROM roles WHERE role_name = '%s';", 
+             role_name);
+    
+    if (sqlite3_prepare_v2(db, role_sql, -1, &stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            role_id = sqlite3_column_int64(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    // Generate salt and hash for password
     unsigned char salt[SALT_SIZE], hash[HASH_SIZE];
     generate_salt(salt);
     hash_password(password, salt, hash);
@@ -199,15 +245,23 @@ char* register_user(sqlite3 *db, const char *input_json) {
     bin_to_hex(salt, SALT_SIZE, salt_hex);
     bin_to_hex(hash, HASH_SIZE, hash_hex);
 
+    // Insert user with profile_id and role_id
     char sql[512];
-    snprintf(sql, sizeof(sql), "INSERT INTO user (user_name, user_password) VALUES ('%s', '%s:%s');", name, salt_hex, hash_hex);
+    snprintf(sql, sizeof(sql), 
+             "INSERT INTO user (user_name, user_password, profile_id, role_id) "
+             "VALUES ('%s', '%s:%s', %lld, %lld);", 
+             name, salt_hex, hash_hex, profile_id, role_id);
 
     char *err_msg = NULL;
     if (sqlite3_exec(db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
         sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         json_decref(root);
         return strdup("{\"status\":\"error\", \"message\":\"Username already exists\"}");
     }
+
+    // Commit transaction
+    sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
     json_decref(root);
     return strdup("{\"status\":\"success\", \"message\":\"User registered successfully\"}");
 }
@@ -272,23 +326,132 @@ char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, ch
 
 char* get_user_json(sqlite3 *db, const char *username) {
     sqlite3_stmt *stmt;
-    const char *sql = "SELECT user_id, user_name FROM user WHERE user_name = ?;";
+    const char *sql = "SELECT u.user_id, u.user_name, p.profile_img_path, r.role_name "
+                     "FROM user u "
+                     "LEFT JOIN profile_pics p ON u.profile_id = p.profile_id "
+                     "LEFT JOIN roles r ON u.role_id = r.role_id "
+                     "WHERE u.user_name = ?;";
+    
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return strdup("{\"error\": \"Failed to prepare query\"}");
 
     sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
     char *json_str = NULL;
+    
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         int id = sqlite3_column_int(stmt, 0);
         const char *name = (const char*)sqlite3_column_text(stmt, 1);
+        const char *profile_path = sqlite3_column_text(stmt, 2) 
+            ? (const char*)sqlite3_column_text(stmt, 2) 
+            : "resources/default_user.png";
+        const char *role = sqlite3_column_text(stmt, 3) 
+            ? (const char*)sqlite3_column_text(stmt, 3) 
+            : "visitor";  // Fallback if role is NULL
+        
         json_t *json_obj = json_object();
         json_object_set_new(json_obj, "id", json_integer(id));
         json_object_set_new(json_obj, "name", json_string(name));
+        json_object_set_new(json_obj, "profile_picture", json_string(profile_path));
+        json_object_set_new(json_obj, "role", json_string(role));
+        
         json_str = json_dumps(json_obj, JSON_COMPACT);
         json_decref(json_obj);
     } else {
         json_str = strdup("{\"error\": \"User not found\"}");
     }
+    
     sqlite3_finalize(stmt);
     return json_str;
+}
+
+int update_profile_picture(sqlite3 *db, const char *username, const unsigned char *image_buffer, size_t buffer_size, const char *profile_pic_path, const char *file_ending, int max_kb) {
+    if (buffer_size > max_kb * 1024) return -1;
+
+    // Allowed file endings
+    const char *allowed_endings[] = {"jpg", "jpeg", "png", "gif"};
+    int valid_ending = 0;
+    for (int i = 0; i < 4; i++) {
+        if (strcasecmp(file_ending, allowed_endings[i]) == 0) {
+            valid_ending = 1;
+            break;
+        }
+    }
+    if (!valid_ending) return -1;
+
+    sqlite3_stmt *stmt;
+    const char *check_sql = "SELECT user_id FROM user WHERE user_name = ?;";
+    if (sqlite3_prepare_v2(db, check_sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+    
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    sqlite3_int64 user_id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        user_id = sqlite3_column_int64(stmt, 0);
+    } else {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+
+    // Get the count of existing profile pictures for this user
+    int pic_number = 0;
+    const char *count_sql = "SELECT COUNT(*) FROM profile_pics WHERE profile_img_path LIKE ?;";
+    if (sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL) == SQLITE_OK) {
+        char pattern[256];
+        snprintf(pattern, sizeof(pattern), "profile/%s_%%", username);
+        sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            pic_number = sqlite3_column_int(stmt, 0);
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+    
+    struct stat st = {0};
+    if (folder_create(profile_pic_path) != 0) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return -1;
+    }
+
+    char new_path[256];
+    snprintf(new_path, sizeof(new_path), "%s/%s_%d.%s", 
+             profile_pic_path, username, pic_number, file_ending);
+
+    FILE *fp = fopen(new_path, "wb");
+    if (!fp || fwrite(image_buffer, 1, buffer_size, fp) != buffer_size) {
+        if (fp) fclose(fp);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return -1;
+    }
+    fclose(fp);
+
+    char file_name[256];
+    snprintf(file_name, sizeof(file_name), "profile/%s_%d.%s", username, pic_number, file_ending);
+
+    // Insert new profile picture record
+    const char *insert_sql = "INSERT INTO profile_pics (profile_img_path) VALUES (?);";
+    if (sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 1, file_name, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return -1;
+    }
+    
+    sqlite3_int64 new_profile_id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+
+    // Update user's current profile picture reference
+    const char *update_sql = "UPDATE user SET profile_id = ? WHERE user_id = ?;";
+    if (sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL) != SQLITE_OK ||
+        sqlite3_bind_int64(stmt, 1, new_profile_id) != SQLITE_OK ||
+        sqlite3_bind_int64(stmt, 2, user_id) != SQLITE_OK ||
+        sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+    return sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
 }

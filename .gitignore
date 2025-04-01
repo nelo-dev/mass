@@ -65,3 +65,6 @@ mass
 *.csr
 *.key
 *.crt
+
+# Data
+data/

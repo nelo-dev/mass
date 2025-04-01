@@ -193,7 +193,7 @@ static int handle_info(struct MHD_Connection *connection, RequestData *req_data,
     (void)req_data; (void)url;
     if (!app) return MHD_NO;
     
-    json_t *json_response = json_pack("{s:s, s:s}", "server_name", app->server_name, "icon_path", app->icon_path);
+    json_t *json_response = json_pack("{s:s, s:s, s:i}", "server_name", app->server_name, "icon_path", app->icon_path, "max_profile_size", app->max_profile_size);
     if (!json_response) return MHD_NO;
     
     char *json_str = json_dumps(json_response, JSON_COMPACT);
@@ -203,6 +203,29 @@ static int handle_info(struct MHD_Connection *connection, RequestData *req_data,
     int ret = send_json_response(connection, MHD_HTTP_OK, json_str, NULL);
     free(json_str);
     return ret;
+}
+
+static int handle_profile(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    if (!req_data->jwt_payload || !req_data->jwt_payload->sub)
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+
+    const char *filename = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "filename");
+    if (!filename)
+        return send_json_response(connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"Missing filename\"}", NULL);
+
+    char prefix[256], suffix[32];
+    if (sscanf(filename, "%255[^.].%31s", prefix, suffix) != 2)
+        return send_json_response(connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"Invalid filename\"}", NULL);
+
+    char response[512];
+    if (update_profile_picture(app->db, req_data->jwt_payload->sub, (const unsigned char *)req_data->buffer, req_data->length,  app->profile_path, suffix, app->max_profile_size) != 0) {
+        snprintf(response, sizeof(response), "{\"error\":\"Image bigger than %d kB or invalid format.\"}",  app->max_profile_size);
+        return send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response, NULL);
+    } 
+
+    snprintf(response, sizeof(response), "{\"status\":\"success\",\"message\":\"Profile picture updated for %s\"}",  req_data->jwt_payload->sub);
+    return send_json_response(connection, MHD_HTTP_OK, response, NULL);
 }
 
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
@@ -237,6 +260,20 @@ static int handle_static_res(struct MHD_Connection *connection, RequestData *req
     return serve_file(connection, filepath);
 }
 
+static int handle_static_profile(struct MHD_Connection *connection, RequestData *req_data, App app, const char *full_url) {
+    (void)req_data; (void)app;
+    const char *prefix = "/profile/";
+    const char *relative_path = full_url + strlen(prefix);
+    char filepath[512];
+    // If no specific file is requested, serve an index file
+    if (strlen(relative_path) == 0) {
+        snprintf(filepath, sizeof(filepath), "public/404.html");
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s/%s", app->profile_path, relative_path);
+    }
+    return serve_file(connection, filepath);
+}
+
 /* ------------------------------------------------------------------
    ADVANCED ROUTE DISPATCH
    ------------------------------------------------------------------ */
@@ -257,14 +294,16 @@ static const Route route_table[] = {
     { "POST", "/user",     handle_get_user, true,  false },
     { "POST", "/logout",   handle_logout,   true,  false },
     { "POST", "/info",     handle_info,     false, false },
+    { "POST", "/profile",  handle_profile,  true,  false },
 
     /* GET routes */
     { "GET", "/register", handle_get_register, false, false },
     { "GET", "/login",    handle_get_login,    false, false },
-    { "GET", "/",   handle_get_home,     true,  false },
+    { "GET", "/",         handle_get_home,     true,  false },
 
     /* Static file route for resources with prefix matching */
-    { "GET", "/resources/",     handle_static_res,   false, true }
+    { "GET", "/resources/",     handle_static_res,      false, true },
+    { "GET", "/profile/",       handle_static_profile,  false, true }
 };
 
 static const Route *find_route(const char *method, const char *url) {

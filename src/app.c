@@ -24,7 +24,7 @@ void init_config()
     add_comment(CFG_PATH, "Server port:");
     add_param(CFG_PATH, "port", "8080");
     add_comment(CFG_PATH, "Database file-path:");
-    add_param(CFG_PATH, "db_path", "db/mass.db");
+    add_param(CFG_PATH, "db_path", "data/db/mass.db");
     add_comment(CFG_PATH, "Size of database cache in MegaByte (greatly improves speed on large archives):");
     add_param(CFG_PATH, "db_cache", "512");
     add_comment(CFG_PATH, "SSL key path (optional)");
@@ -39,6 +39,10 @@ void init_config()
     add_param(CFG_PATH, "dl_thread_cnt", "8");
     add_comment(CFG_PATH, "Max Download Queue Count (max elements pending in download queue)");
     add_param(CFG_PATH, "dl_queue_size", "64");
+    add_comment(CFG_PATH, "Profile picture path:");
+    add_param(CFG_PATH, "profile_path", "data/profiles/");
+    add_comment(CFG_PATH, "Max Profile Image Size (in kB):");
+    add_param(CFG_PATH, "max_profile_size", "128");
 }
 
 App create_app()
@@ -51,7 +55,7 @@ App create_app()
     char db_path[MAX_PATH_LEN];
     if (get_param_string(CFG_PATH, "db_path", db_path, MAX_PATH_LEN) == -1) {
         printf("Could not find database path (db_path) in config! Defaulting to db/mass.db");
-        strcpy(db_path, "db/mass.db");
+        strcpy(db_path, "data/db/mass.db");
     }
 
     int db_cache = 0;
@@ -87,6 +91,16 @@ App create_app()
     if (get_param_string(CFG_PATH, "server_icon", app->icon_path, 256) == -1) {
         fprintf(stderr, "Error: Invalid or missing server_icon path. Using default placeholder icon.\n");
         strcpy(app->icon_path, "resources/placeholder_icon.png");
+    }
+
+    if (get_param_string(CFG_PATH, "profile_path", app->profile_path, 256) == -1) {
+        fprintf(stderr, "Error: Invalid or missing profile_path path. Using default path data/profiles/.\n");
+        strcpy(app->icon_path, "data/profiles/");
+    }
+
+    if (get_param_int(CFG_PATH, "max_profile_size", &app->max_profile_size) == -1 || dl_queue_size < 0) {
+        fprintf(stderr, "Error: Invalid or missing max_profile_size configuration. Using default value of 128 kB.\n");
+        app->max_profile_size = 128;
     }
 
     int port = 0;
