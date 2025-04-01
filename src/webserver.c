@@ -107,23 +107,28 @@ static int send_redirect(struct MHD_Connection *connection, const char *location
    ------------------------------------------------------------------ */
 static int serve_file(struct MHD_Connection *connection, const char *filepath) {
     FILE *fp = fopen(filepath, "rb");
-    if (!fp) {
-        const char *err_msg = "{\"error\":\"File not found\"}";
-        return send_json_response(connection, MHD_HTTP_NOT_FOUND, err_msg, NULL);
-    }
-    int fd = fileno(fp);
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
+    if (!fp) 
+        return send_json_response(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"File not found\"}", NULL);
+
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *buffer = malloc(size);
+    if (!buffer) {
         fclose(fp);
-        const char *err_msg = "{\"error\":\"Error reading file\"}";
-        return send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, err_msg, NULL);
+        return send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, "{\"error\":\"Error reading file\"}", NULL);
     }
-    struct MHD_Response *response = MHD_create_response_from_fd_at_offset64(st.st_size, fd, 0);
+
+    fread(buffer, 1, size, fp);
+    fclose(fp);
+
+    struct MHD_Response *response = MHD_create_response_from_buffer(size, buffer, MHD_RESPMEM_MUST_FREE);
     if (!response) {
-        fclose(fp);
-        const char *err_msg = "{\"error\":\"Error creating response\"}";
-        return send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, err_msg, NULL);
+        free(buffer);
+        return send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, "{\"error\":\"Error creating response\"}", NULL);
     }
+
     MHD_add_response_header(response, "Content-Type", get_content_type(filepath));
     int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
@@ -243,6 +248,11 @@ static int handle_get_home(struct MHD_Connection *connection, RequestData *req_d
     return serve_file(connection, "public/home.html");
 }
 
+static int handle_get_profile(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/profile.html");
+}
+
 /* ------------------------------------------------------------------
    NEW STATIC HANDLER: Serve all files under public/res/
    ------------------------------------------------------------------ */
@@ -300,6 +310,7 @@ static const Route route_table[] = {
     { "GET", "/register", handle_get_register, false, false },
     { "GET", "/login",    handle_get_login,    false, false },
     { "GET", "/",         handle_get_home,     true,  false },
+    { "GET", "/profile",  handle_get_profile,     true,  false },
 
     /* Static file route for resources with prefix matching */
     { "GET", "/resources/",     handle_static_res,      false, true },

@@ -110,8 +110,8 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
 
     // Default role insertion queries
     const char *default_roles[] = {
-        "INSERT INTO roles (role_name) VALUES ('owner') ON CONFLICT(role_name) DO NOTHING;",
         "INSERT INTO roles (role_name) VALUES ('admin') ON CONFLICT(role_name) DO NOTHING;",
+        "INSERT INTO roles (role_name) VALUES ('moderator') ON CONFLICT(role_name) DO NOTHING;",
         "INSERT INTO roles (role_name) VALUES ('visitor') ON CONFLICT(role_name) DO NOTHING;"
     };
 
@@ -222,7 +222,7 @@ char* register_user(sqlite3 *db, const char *input_json) {
     }
 
     // Get role_id for either 'owner' or 'visitor'
-    const char *role_name = is_first_user ? "owner" : "visitor";
+    const char *role_name = is_first_user ? "admin" : "visitor";
     sqlite3_int64 role_id = 0;
     char role_sql[128];
     snprintf(role_sql, sizeof(role_sql), 

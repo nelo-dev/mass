@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Profile Picture - mass</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: #0e0e0e;
+            color: #f0f0f0;
+            background-image: url('/resources/hexagon.png');
+            background-repeat: repeat;
+            background-size: 74px 44px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .profile-container {
+            background-color: #1a1a1a;
+            padding: 20px;
+            border: 1px solid #333;
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 20px;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .header span {
+            font-size: 18px;
+        }
+        #preview {
+            width: 100px;
+            height: 100px;
+            margin: 10px auto;
+            display: block;
+            object-fit: cover;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4a4a4a;
+            border: none;
+            color: #f0f0f0;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #5a5a5a;
+        }
+        #upload-warning {
+            margin-top: 10px;
+            color: #ff5555;
+        }
+        #upload-warning.success {
+            color: #55ff55;
+        }
+        @media (max-width: 480px) {
+            .profile-container {
+                margin: 10px;
+            }
+        }
+    </style>
+    <script>
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                document.title = `Update Profile Picture - ${data.server_name}`;
+                document.getElementById('favicon').href = data.icon_path;
+                document.getElementById('logo').src = data.icon_path;
+                document.getElementById('server-name').textContent = data.server_name;
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            updateTitleAndFavicon();
+        });
+
+        function previewImage() {
+            const fileInput = document.getElementById("profile-upload");
+            const preview = document.getElementById("preview");
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function uploadProfilePicture() {
+            const warning = document.getElementById("upload-warning");
+            const fileInput = document.getElementById("profile-upload");
+
+            warning.textContent = "";
+            warning.classList.remove("success");
+
+            if (!fileInput.files.length) {
+                warning.textContent = "Please select a file";
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const fileName = file.name;
+            const extension = fileName.split('.').pop().toLowerCase();
+
+            if (!['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
+                warning.textContent = "Invalid file type. Only JPG, PNG, and GIF are allowed.";
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const xhr = new XMLHttpRequest();
+                xhr.open("POST", `/profile?filename=profile.${extension}`, true);
+                xhr.setRequestHeader("Content-Type", `image/${extension === 'jpg' || extension === 'jpeg' ? 'jpeg' : extension}`);
+
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === XMLHttpRequest.DONE) {
+                        if (xhr.status === 200) {
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                if (data.status === "success") {
+                                    warning.textContent = data.message;
+                                    warning.classList.add("success");
+                                    setTimeout(() => window.location.href = "/", 1000);
+                                } else {
+                                    warning.textContent = data.error || "Upload failed";
+                                }
+                            } catch (err) {
+                                warning.textContent = "Invalid response from server";
+                            }
+                        } else {
+                            try {
+                                const data = xhr.responseText ? JSON.parse(xhr.responseText) : { error: "Upload failed" };
+                                warning.textContent = data.error || "Upload failed";
+                            } catch (err) {
+                                warning.textContent = "Upload failed";
+                            }
+                        }
+                    }
+                };
+
+                xhr.onerror = function() {
+                    warning.textContent = "Failed to upload profile picture: Network error";
+                };
+
+                xhr.send(e.target.result);
+            };
+
+            reader.onerror = function() {
+                warning.textContent = "Failed to read file";
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function returnHome() {
+            window.location.href = "/";
+        }
+    </script>
+</head>
+<body>
+    <div class="profile-container">
+        <div class="header">
+            <img id="logo" alt="Server Logo">
+            <span id="server-name"></span>
+        </div>
+        <h2>Update Profile Picture</h2>
+        <img id="preview" src="/resources/placeholder_icon.png" alt="Preview">
+        <form id="upload-form">
+            <input type="file" id="profile-upload" accept="image/jpeg,image/png,image/gif" onchange="previewImage()">
+            <button type="button" onclick="uploadProfilePicture()">Upload</button>
+            <button type="button" onclick="returnHome()">Return Home</button>
+        </form>
+        <div id="upload-warning"></div>
+    </div>
+</body>
+</html>
