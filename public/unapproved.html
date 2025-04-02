@@ -80,6 +80,12 @@
         }
     </style>
     <script>
+        window.addEventListener('load', function() {
+            if (performance.navigation.type === performance.navigation.TYPE_RELOAD) {
+                window.location.href = '/';
+            }
+        });
+
         window.onload = function() {
             updateTitleAndFavicon();
             fetchUserInfo();

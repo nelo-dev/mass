@@ -233,6 +233,38 @@ static int handle_profile(struct MHD_Connection *connection, RequestData *req_da
     return send_json_response(connection, MHD_HTTP_OK, response, NULL);
 }
 
+static int handle_users(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = search_users(app->db, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
+static int handle_toggle_approval(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+
+    if (!req_data->jwt_payload) {
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+    }
+
+    char *response_json = toggle_user_approval_by_requester(app->db, req_data->buffer, req_data->jwt_payload->sub);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
+static int handle_toggle_role(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    if (!req_data->jwt_payload) {
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+    }
+    char *user_json = toggle_user_role_by_requester(app->db, req_data->buffer, req_data->jwt_payload->sub);
+    int ret = send_json_response(connection, MHD_HTTP_OK, user_json, NULL);
+    free(user_json);
+    return ret;
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -256,6 +288,11 @@ static int handle_get_profile(struct MHD_Connection *connection, RequestData *re
 static int handle_get_unapproved(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/unapproved.html");
+}
+
+static int handle_get_management(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/management.html");
 }
 
 /* ------------------------------------------------------------------
@@ -311,6 +348,9 @@ static const Route route_table[] = {
     { "POST", "/logout",   handle_logout,   true,  0,  false },
     { "POST", "/info",     handle_info,     false, -1, false },
     { "POST", "/profile",  handle_profile,  true,  0,  false },
+    { "POST", "/users",    handle_users,    true,  2,  false },
+    { "POST", "/toggleapproval",    handle_toggle_approval,    true,  2,  false },
+    { "POST", "/togglerole",    handle_toggle_role,    true,  2,  false },
 
     /* GET routes */
     { "GET", "/register", handle_get_register, false, -1, false },
@@ -318,6 +358,7 @@ static const Route route_table[] = {
     { "GET", "/",         handle_get_home,     true,  1,  false },
     { "GET", "/profile",    handle_get_profile,  true,  0,  false },
     { "GET", "/unapproved",  handle_get_unapproved,  true,  0,  false },
+    { "GET", "/management",  handle_get_management,  true,  2,  false },
 
     /* Static file routes */
     { "GET", "/resources/", handle_static_res,     false, -1, true },

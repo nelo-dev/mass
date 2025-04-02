@@ -393,6 +393,122 @@ int get_user_access_level(sqlite3 *db, const char *username, int approval_enable
     return level;
 }
 
+char* search_users(sqlite3* db, const char* search_json) {
+    json_t* result;
+
+    // Validate database pointer
+    if (!db) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Database connection is null"));
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    // Validate search_json and parse it
+    if (!search_json) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("No search JSON provided"));
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    json_t* root;
+    json_error_t error;
+    root = json_loads(search_json, 0, &error);
+    if (!root) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Invalid JSON format"));
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    // Extract the "username" field from the JSON
+    json_t* username_json = json_object_get(root, "username");
+    if (!username_json || !json_is_string(username_json)) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Missing or invalid 'username' in JSON"));
+        json_decref(root);
+        return json_dumps(result, JSON_COMPACT);
+    }
+    const char* username = json_string_value(username_json);
+
+    // Create the LIKE pattern for partial matching (e.g., "%jo%")
+    char* like_pattern = sqlite3_mprintf("%%%s%%", username);
+    if (!like_pattern) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to allocate LIKE pattern"));
+        json_decref(root);
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    // Define the SQL query with LEFT JOINs
+    const char* sql = "SELECT u.user_name, p.profile_img_path, r.role_name, u.approved "
+                      "FROM user u "
+                      "LEFT JOIN profile_pics p ON u.profile_id = p.profile_id "
+                      "LEFT JOIN roles r ON u.role_id = r.role_id "
+                      "WHERE u.user_name LIKE ?"
+                      "LIMIT 16";
+
+    // Prepare the SQL statement
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to prepare SQL statement"));
+        sqlite3_free(like_pattern);
+        json_decref(root);
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    // Bind the LIKE pattern to the query
+    rc = sqlite3_bind_text(stmt, 1, like_pattern, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) {
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to bind SQL parameters"));
+        sqlite3_finalize(stmt);
+        sqlite3_free(like_pattern);
+        json_decref(root);
+        return json_dumps(result, JSON_COMPACT);
+    }
+
+    // Create a JSON array for successful results
+    result = json_array();
+
+    // Execute the query and process each row
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const char* user_name = (const char*)sqlite3_column_text(stmt, 0);
+        const char* profile_path = (const char*)sqlite3_column_text(stmt, 1);
+        const char* role_name = (const char*)sqlite3_column_text(stmt, 2);
+        int approved = sqlite3_column_int(stmt, 3);
+
+        json_t* user_obj = json_object();
+        json_object_set_new(user_obj, "name", json_string(user_name));
+        json_object_set_new(user_obj, "profile_path", 
+                            profile_path ? json_string(profile_path) : json_null());
+        json_object_set_new(user_obj, "role", 
+                            role_name ? json_string(role_name) : json_null());
+        json_object_set_new(user_obj, "approved", json_integer(approved));
+
+        json_array_append_new(result, user_obj);
+    }
+
+    // Check if query execution completed successfully
+    if (rc != SQLITE_DONE) {
+        json_decref(result);
+        result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to execute SQL query"));
+    }
+
+    // Clean up SQLite resources
+    sqlite3_finalize(stmt);
+    sqlite3_free(like_pattern);
+    json_decref(root);
+
+    // Convert the result (array or error object) to a string
+    char* result_json = json_dumps(result, JSON_COMPACT);
+    json_decref(result);
+
+    // Return the JSON string (caller must free this memory)
+    return result_json;
+}
+
 int update_profile_picture(sqlite3 *db, const char *username, const unsigned char *image_buffer, size_t buffer_size, const char *profile_pic_path, const char *file_ending, int max_kb) {
     if (buffer_size > max_kb * 1024) return -1;
 
@@ -483,4 +599,197 @@ int update_profile_picture(sqlite3 *db, const char *username, const unsigned cha
 
     sqlite3_finalize(stmt);
     return sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
+}
+
+char *toggle_user_approval_by_requester(sqlite3 *db, const char *json_input, const char *requester_username) {
+    json_t *root = json_loads(json_input, 0, NULL);
+    if (!root) return strdup("{\"success\":false,\"error\":\"Invalid JSON\"}");
+
+    const char *target_username = json_string_value(json_object_get(root, "username"));
+    if (!target_username) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Missing username\"}");
+    }
+
+    // Check if requester is trying to modify their own status
+    if (strcmp(requester_username, target_username) == 0) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Cannot modify own approval status\"}");
+    }
+
+    // Get requester's role and approval status
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, 
+        "SELECT r.role_name FROM user u JOIN roles r ON u.role_id = r.role_id WHERE u.user_name = ?", 
+        -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"DB prep error for requester\"}");
+    }
+
+    sqlite3_bind_text(stmt, 1, requester_username, -1, SQLITE_STATIC);
+    int requester_rank = -1;  // -1: not found, 0: visitor, 1: moderator, 2: admin
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *requester_role = (const char*)sqlite3_column_text(stmt, 0);
+        if (strcmp(requester_role, "admin") == 0) requester_rank = 2;
+        else if (strcmp(requester_role, "moderator") == 0) requester_rank = 1;
+        else if (strcmp(requester_role, "visitor") == 0) requester_rank = 0;
+    }
+    sqlite3_finalize(stmt);
+
+    if (requester_rank == -1) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Requester not found\"}");
+    }
+
+    // Get target user's role and approval status
+    if (sqlite3_prepare_v2(db, 
+        "SELECT u.approved, r.role_name FROM user u JOIN roles r ON u.role_id = r.role_id WHERE u.user_name = ?", 
+        -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"DB prep error for target\"}");
+    }
+
+    sqlite3_bind_text(stmt, 1, target_username, -1, SQLITE_STATIC);
+    int step_result = sqlite3_step(stmt);
+    int new_approval = -1;
+    int target_rank = -1;  // -1: not found, 0: visitor, 1: moderator, 2: admin
+    if (step_result == SQLITE_ROW) {
+        new_approval = !sqlite3_column_int(stmt, 0);
+        const char *target_role = (const char*)sqlite3_column_text(stmt, 1);
+        if (strcmp(target_role, "admin") == 0) target_rank = 2;
+        else if (strcmp(target_role, "moderator") == 0) target_rank = 1;
+        else if (strcmp(target_role, "visitor") == 0) target_rank = 0;
+    }
+    sqlite3_finalize(stmt);
+
+    if (new_approval == -1) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Target user not found\"}");
+    }
+
+    // Check permission hierarchy
+    if (requester_rank <= target_rank) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Insufficient permissions to modify this user\"}");
+    }
+
+    // Perform the update
+    if (sqlite3_prepare_v2(db, 
+        "UPDATE user SET approved = ? WHERE user_name = ?", 
+        -1, &stmt, NULL) != SQLITE_OK ||
+        sqlite3_bind_int(stmt, 1, new_approval) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, target_username, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Update failed\"}");
+    }
+
+    sqlite3_finalize(stmt);
+    json_decref(root);
+
+    json_t *response = json_pack("{sbsisi}", 
+        "success", 1, 
+        "username", target_username, 
+        "approved", new_approval);
+    char *result = json_dumps(response, JSON_COMPACT);
+    json_decref(response);
+    return result;
+}
+
+char *toggle_user_role_by_requester(sqlite3 *db, const char *json_input, const char *requester_username) {
+    json_t *root = json_loads(json_input, 0, NULL);
+    if (!root) return strdup("{\"success\":false,\"error\":\"Invalid JSON\"}");
+
+    const char *target_username = json_string_value(json_object_get(root, "username"));
+    if (!target_username) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Missing username\"}");
+    }
+
+    if (strcmp(requester_username, target_username) == 0) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Cannot modify own role\"}");
+    }
+
+    // Check if requester is admin
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db,
+        "SELECT r.role_name FROM user u JOIN roles r ON u.role_id = r.role_id WHERE u.user_name = ?",
+        -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"DB prep error for requester\"}");
+    }
+
+    sqlite3_bind_text(stmt, 1, requester_username, -1, SQLITE_STATIC);
+    int is_requester_admin = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *role = (const char*)sqlite3_column_text(stmt, 0);
+        if (role && strcmp(role, "admin") == 0) {
+            is_requester_admin = 1;
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    if (!is_requester_admin) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Only admins can modify roles\"}");
+    }
+
+    // Get current role with safer handling
+    if (sqlite3_prepare_v2(db,
+        "SELECT r.role_name FROM user u JOIN roles r ON u.role_id = r.role_id WHERE u.user_name = ?",
+        -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"DB prep error for target\"}");
+    }
+
+    sqlite3_bind_text(stmt, 1, target_username, -1, SQLITE_STATIC);
+    char current_role[16] = {0};  // Buffer for role name (visitor/moderator/admin)
+    int has_result = 0;
+    
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *role_temp = (const char*)sqlite3_column_text(stmt, 0);
+        if (role_temp) {
+            strncpy(current_role, role_temp, sizeof(current_role) - 1);
+            has_result = 1;
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    if (!has_result) {
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Target user not found\"}");
+    }
+
+    // Determine next role
+    const char *next_role;
+    if (strcmp(current_role, "visitor") == 0) {
+        next_role = "moderator";
+    } else {
+        next_role = "visitor";
+    }
+
+    // Update the role
+    if (sqlite3_prepare_v2(db,
+        "UPDATE user SET role_id = (SELECT role_id FROM roles WHERE role_name = ?) WHERE user_name = ?",
+        -1, &stmt, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 1, next_role, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, target_username, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        json_decref(root);
+        return strdup("{\"success\":false,\"error\":\"Role update failed\"}");
+    }
+
+    sqlite3_finalize(stmt);
+    json_decref(root);
+
+    json_t *response = json_pack("{sbsiss}", 
+        "success", 1,
+        "username", target_username,
+        "new_role", next_role);
+    char *result = json_dumps(response, JSON_COMPACT);
+    json_decref(response);
+    return result;
 }

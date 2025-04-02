@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: #0e0e0e;
+            color: #f0f0f0;
+            background-image: url('/resources/hexagon.png');
+            background-repeat: repeat;
+            background-size: 74px 44px;
+            min-height: 100vh;
+        }
+        .top-bar {
+            top: 0;
+            width: 100%;
+            background-color: #1a1a1a;
+            padding: 10px 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        .top-bar .logo {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .top-bar .logo img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .top-bar .logo span {
+            font-size: 18px;
+        }
+        .top-bar .user-info {
+            display: flex;
+            align-items: center;
+        }
+        .top-bar .user-info span {
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .top-bar .user-info img#profile-pic {
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            transition: transform 0.6s ease-in-out;
+        }
+        .top-bar .user-info img#profile-pic:hover {
+            animation: pulse 1s infinite;
+        }
+        .top-bar .user-info button {
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .top-bar .user-info button img#logout-pic {
+            width: 32px;
+            height: 32px;
+        }
+        .visitor { color: #f0f0f0; }
+        .moderator { color: #5555ff; }
+        .admin { color: #ffaa00; }
+        
+        .content {
+            margin-top: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .search-bar {
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 20px;
+        }
+        .search-bar input {
+            width: 100%;
+            padding: 8px;
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            color: #f0f0f0;
+            box-sizing: border-box;
+        }
+        .user-table {
+            width: 100%;
+            max-width: 800px;
+            background-color: transparent;
+            border-collapse: collapse;
+        }
+        .user-table th,
+        .user-table td {
+            padding: 5px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        .user-table th {
+            background-color: #1a1a1a;
+        }
+        .user-table img.profile-pic {
+            width: 32px;
+            height: 32px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        .user-table img.status-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+        }
+        .user-table img.status-icon.clickable {
+            cursor: pointer;
+        }
+        .user-table img.role-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+        }
+        .user-table img.role-icon.clickable {
+            cursor: pointer;
+        }
+        .username {
+            position: relative;
+            display: inline-block;
+        }
+        .username:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        .tooltip {
+            visibility: hidden;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            text-align: center;
+            padding: 5px 10px;
+            border: 1px solid #333;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+        .error-message {
+            color: #ff5555;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        @media (max-width: 480px) {
+            .content {
+                padding: 10px;
+            }
+            .user-table {
+                font-size: 14px;
+            }
+            .user-table img.profile-pic {
+                width: 24px;
+                height: 24px;
+            }
+            .user-table img.status-icon {
+                width: 24px;
+                height: 24px;
+            }
+            .user-table img.role-icon {
+                width: 24px;
+                height: 24px;
+            }
+            .tooltip {
+                font-size: 12px;
+            }
+        }
+    </style>
+    <script>
+        let currentUser = null;
+        let currentSearchTerm = "";
+
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                document.title = data.server_name;
+                document.getElementById('favicon').href = data.icon_path;
+                document.getElementById('logo').src = data.icon_path;
+                document.getElementById('server-name').textContent = data.server_name;
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        }
+
+        async function fetchUsers(searchTerm = "") {
+            try {
+                const response = await fetch('/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: searchTerm })
+                });
+                if (!response.ok) throw new Error('Failed to fetch users');
+                const users = await response.json();
+                displayUsers(users);
+            } catch (error) {
+                console.error('Error fetching users:', error);
+            }
+        }
+
+        async function toggleApproval(username) {
+            try {
+                const response = await fetch('/toggleapproval', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+                const result = await response.json();
+                
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.style.display = 'none';
+
+                if (result.success) {
+                    fetchUsers(currentSearchTerm);
+                } else {
+                    errorMessage.textContent = result.error;
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error toggling approval:', error);
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.textContent = 'Network error occurred';
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        async function toggleRole(username) {
+            try {
+                const response = await fetch('/togglerole', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+                const result = await response.json();
+                
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.style.display = 'none';
+
+                if (result.success) {
+                    fetchUsers(currentSearchTerm);
+                } else {
+                    errorMessage.textContent = result.error;
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error toggling role:', error);
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.textContent = 'Network error occurred';
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        function displayUsers(users) {
+            const tableBody = document.getElementById('user-table-body');
+            tableBody.innerHTML = '';
+            users.forEach(user => {
+                const roleIconPath = {
+                    'visitor': '/resources/visitor.png',
+                    'moderator': '/resources/moderator.png',
+                    'admin': '/resources/admin.png'
+                }[user.role.toLowerCase()] || '/resources/visitor.png';
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <img src="${user.profile_path}" alt="${user.name}'s profile" class="profile-pic">
+                        <span class="username ${user.role.toLowerCase()}">
+                            ${user.name}
+                            <span class="tooltip">${user.role}</span>
+                        </span>
+                    </td>
+                    <td>
+                        <img src="${user.approved ? '/resources/approved.png' : '/resources/blocked.png'}" 
+                            alt="${user.approved ? 'Approved' : 'Not Approved'}" 
+                            class="status-icon clickable"
+                            onclick="toggleApproval('${user.name}')">
+                    </td>
+                    <td>
+                        <img src="${roleIconPath}" 
+                            alt="${user.role}" 
+                            class="role-icon clickable"
+                            onclick="toggleRole('${user.name}')">
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                const response = await fetch("/user", { method: "POST" });
+                if (!response.ok) throw new Error("Failed to fetch user data");
+                const data = await response.json();
+                currentUser = data; // Store current user data
+                const userName = document.getElementById("user-name");
+                userName.textContent = data.name;
+                userName.className = data.role.toLowerCase();
+                document.getElementById("profile-pic").src = data.profile_picture;
+                
+                document.querySelector('.logo').addEventListener('click', () => {
+                    window.location.href = '/';
+                });
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                window.location.href = "/login";
+            }
+            
+            updateTitleAndFavicon();
+            fetchUsers("");
+            
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('input', (e) => {
+                currentSearchTerm = e.target.value.trim();
+                fetchUsers(currentSearchTerm === '' ? '' : currentSearchTerm);
+            });
+        });
+
+        function logout() {
+            fetch("/logout", { method: "POST" })
+                .then(() => window.location.href = "/login")
+                .catch(error => console.error("Error logging out:", error));
+        }
+
+        function goToProfile() {
+            window.location.href = "/profile";
+        }
+    </script>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <img id="logo" alt="Server Logo">
+            <span id="server-name"></span>
+        </div>
+        <div class="user-info">
+            <span id="user-name"></span>
+            <img id="profile-pic" alt="Profile Picture" onclick="goToProfile()">
+            <button onclick="logout()">
+                <img id="logout-pic" src="/resources/logout.png" alt="Logout">
+            </button>
+        </div>
+    </div>
+    <div class="content">
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Search users...">
+        </div>
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Approved</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody id="user-table-body">
+            </tbody>
+        </table>
+        <div id="error-message" class="error-message"></div>
+    </div>
+</body>
+</html>
