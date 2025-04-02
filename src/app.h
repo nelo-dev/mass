@@ -19,6 +19,7 @@ typedef struct App_t {
     char icon_path[256];
     char profile_path[256];
     int max_profile_size;
+    int approval;
 } App_t;
 
 typedef App_t * App;

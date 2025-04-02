@@ -54,16 +54,12 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "user_password TEXT NOT NULL, "
         "profile_id INTEGER, "
         "role_id INTEGER, "
+        "approved INTEGER DEFAULT 0, "
         "FOREIGN KEY(profile_id) REFERENCES profile_pics(profile_id) ON DELETE SET NULL, "
         "FOREIGN KEY(role_id) REFERENCES roles(role_id) ON DELETE SET NULL);",
 
-        "CREATE TABLE IF NOT EXISTS collections ("
-        "collection_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "collection_name TEXT NOT NULL);",
-
         "CREATE TABLE IF NOT EXISTS media ("
         "media_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "collection_id INTEGER, "
         "url TEXT UNIQUE NOT NULL, "
         "preview_url TEXT UNIQUE NOT NULL, "
         "path TEXT UNIQUE NOT NULL, "
@@ -71,8 +67,7 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "title TEXT, "
         "creator TEXT, "
         "score INTEGER, "
-        "web_id INTEGER, "
-        "FOREIGN KEY(collection_id) REFERENCES collections(collection_id) ON DELETE CASCADE);",
+        "web_id INTEGER);",
 
         "CREATE TABLE IF NOT EXISTS tags ("
         "tag_id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -96,16 +91,15 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
 
     // Index creation queries
     const char *indexes[] = {
-        "CREATE INDEX IF NOT EXISTS idx_media_collection_id ON media(collection_id);",
         "CREATE INDEX IF NOT EXISTS idx_media_score ON media(score);",
         "CREATE INDEX IF NOT EXISTS idx_media_web_id ON media(web_id);",
         "CREATE INDEX IF NOT EXISTS idx_tag_name ON tags(tag_name);",
-        "CREATE INDEX IF NOT EXISTS idx_tag_cnt ON tags(tag_cnt);",
         "CREATE INDEX IF NOT EXISTS idx_mediatags_media_id ON media_tags(media_id);",
         "CREATE INDEX IF NOT EXISTS idx_mediatags_tag_id ON media_tags(tag_id);",
         "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);",
         "CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active);",
-        "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);"
+        "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);",
+        "CREATE INDEX IF NOT EXISTS idx_user_approved ON user(approved);"
     };
 
     // Default role insertion queries
@@ -221,7 +215,7 @@ char* register_user(sqlite3 *db, const char *input_json) {
         sqlite3_finalize(stmt);
     }
 
-    // Get role_id for either 'owner' or 'visitor'
+    // Get role_id for either 'admin' or 'visitor'
     const char *role_name = is_first_user ? "admin" : "visitor";
     sqlite3_int64 role_id = 0;
     char role_sql[128];
@@ -245,12 +239,12 @@ char* register_user(sqlite3 *db, const char *input_json) {
     bin_to_hex(salt, SALT_SIZE, salt_hex);
     bin_to_hex(hash, HASH_SIZE, hash_hex);
 
-    // Insert user with profile_id and role_id
+    // Insert user with profile_id, role_id, and approved (1 for first user, 0 for others)
     char sql[512];
     snprintf(sql, sizeof(sql), 
-             "INSERT INTO user (user_name, user_password, profile_id, role_id) "
-             "VALUES ('%s', '%s:%s', %lld, %lld);", 
-             name, salt_hex, hash_hex, profile_id, role_id);
+             "INSERT INTO user (user_name, user_password, profile_id, role_id, approved) "
+             "VALUES ('%s', '%s:%s', %lld, %lld, %d);", 
+             name, salt_hex, hash_hex, profile_id, role_id, is_first_user ? 1 : 0);
 
     char *err_msg = NULL;
     if (sqlite3_exec(db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
@@ -362,6 +356,41 @@ char* get_user_json(sqlite3 *db, const char *username) {
     
     sqlite3_finalize(stmt);
     return json_str;
+}
+
+int get_user_access_level(sqlite3 *db, const char *username, int approval_enabled) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT r.role_name, u.approved FROM user u LEFT JOIN roles r ON u.role_id = r.role_id WHERE u.user_name = ?;";
+    
+    // Prepare the SQL statement and bind the username
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK || 
+        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
+        return -1;  // Error case
+    }
+
+    int level = -1;  // Default to error/invalid
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *role_name = (const char *)sqlite3_column_text(stmt, 0);
+        int is_approved = sqlite3_column_int(stmt, 1);
+        
+        if (approval_enabled && !is_approved) {
+            level = 0;  // Unapproved user when approval is enforced
+        } else {
+            // Approval is either disabled or user is approved; base level on role
+            if (role_name) {
+                if (strcmp(role_name, "admin") == 0) level = 3;
+                else if (strcmp(role_name, "moderator") == 0) level = 2;
+                else if (strcmp(role_name, "visitor") == 0) level = 1;
+                else level = 1;  // Default to visitor if role is unrecognized
+            } else {
+                level = 1;  // No role specified, treat as visitor
+            }
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    return level;
 }
 
 int update_profile_picture(sqlite3 *db, const char *username, const unsigned char *image_buffer, size_t buffer_size, const char *profile_pic_path, const char *file_ending, int max_kb) {

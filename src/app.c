@@ -43,6 +43,8 @@ void init_config()
     add_param(CFG_PATH, "profile_path", "data/profiles/");
     add_comment(CFG_PATH, "Max Profile Image Size (in kB):");
     add_param(CFG_PATH, "max_profile_size", "128");
+    add_comment(CFG_PATH, "New users require approval:");
+    add_param(CFG_PATH, "approval", "1");
 }
 
 App create_app()
@@ -101,6 +103,11 @@ App create_app()
     if (get_param_int(CFG_PATH, "max_profile_size", &app->max_profile_size) == -1 || dl_queue_size < 0) {
         fprintf(stderr, "Error: Invalid or missing max_profile_size configuration. Using default value of 128 kB.\n");
         app->max_profile_size = 128;
+    }
+
+    if (get_param_int(CFG_PATH, "approval", &app->approval) == -1 || dl_queue_size < 0) {
+        fprintf(stderr, "Error: Approval (approval) is not configured. Request require approval on default.\n");
+        app->approval = 1;
     }
 
     int port = 0;

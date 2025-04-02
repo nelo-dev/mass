@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Not Approved</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: #0e0e0e;
+            color: #f0f0f0;
+            background-image: url('/resources/hexagon.png');
+            background-repeat: repeat;
+            background-size: 74px 44px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .login-container {
+            background-color: #1a1a1a;
+            padding: 20px;
+            border: 1px solid #333;
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .header span {
+            font-size: 18px;
+        }
+        .profile-section {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .profile-pic {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            margin-bottom: 10px;
+            cursor: pointer; /* Indicates clickability */
+        }
+        .welcome-message {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        .info-message {
+            color: #f0f0f0;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4a4a4a;
+            border: none;
+            color: #f0f0f0;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        button:hover {
+            background-color: #5a5a5a;
+        }
+        @media (max-width: 480px) {
+            .login-container {
+                margin: 10px;
+            }
+        }
+    </style>
+    <script>
+        window.onload = function() {
+            updateTitleAndFavicon();
+            fetchUserInfo();
+        };
+
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                document.getElementById('favicon').href = data.icon_path;
+                document.getElementById('logo').src = data.icon_path;
+                document.getElementById('server-name').textContent = data.server_name;
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        }
+
+        async function fetchUserInfo() {
+            try {
+                const response = await fetch('/user', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to fetch user info');
+                const data = await response.json();
+                document.getElementById('profile-pic').src = `/${data.profile_picture}`;
+                document.getElementById('welcome-message').textContent = `Welcome, ${data.name}!`;
+            } catch (error) {
+                console.error('Error fetching user info:', error);
+                document.getElementById('welcome-message').textContent = 'Welcome!';
+            }
+        }
+
+        async function logout() {
+            await fetch('/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+    </script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="header">
+            <img id="logo" alt="Server Logo">
+            <span id="server-name"></span>
+        </div>
+        <div class="profile-section">
+            <a href="/profile">
+                <img id="profile-pic" class="profile-pic" alt="Profile Picture">
+            </a>
+            <div id="welcome-message" class="welcome-message"></div>
+        </div>
+        <p class="info-message">Your account has not been approved yet. Please contact a moderator or admin to get access.</p>
+        <button onclick="logout()">Logout</button>
+    </div>
+</body>
+</html>

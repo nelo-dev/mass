@@ -253,6 +253,11 @@ static int handle_get_profile(struct MHD_Connection *connection, RequestData *re
     return serve_file(connection, "public/profile.html");
 }
 
+static int handle_get_unapproved(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/unapproved.html");
+}
+
 /* ------------------------------------------------------------------
    NEW STATIC HANDLER: Serve all files under public/res/
    ------------------------------------------------------------------ */
@@ -294,27 +299,29 @@ typedef struct {
     const char *path;         // Base path for the route
     RouteHandler handler;
     bool requires_auth;       // Indicates if JWT auth is required
+    int min_access_level;     // Minimum access level required (only if requires_auth is true)
     bool prefix_match;        // If true, perform prefix matching on the URL
 } Route;
 
 static const Route route_table[] = {
     /* POST routes */
-    { "POST", "/register", handle_register, false, false },
-    { "POST", "/login",    handle_login,    false, false },
-    { "POST", "/user",     handle_get_user, true,  false },
-    { "POST", "/logout",   handle_logout,   true,  false },
-    { "POST", "/info",     handle_info,     false, false },
-    { "POST", "/profile",  handle_profile,  true,  false },
+    { "POST", "/register", handle_register, false, -1, false },
+    { "POST", "/login",    handle_login,    false, -1, false },
+    { "POST", "/user",     handle_get_user, true,  0,  false },
+    { "POST", "/logout",   handle_logout,   true,  0,  false },
+    { "POST", "/info",     handle_info,     false, -1, false },
+    { "POST", "/profile",  handle_profile,  true,  0,  false },
 
     /* GET routes */
-    { "GET", "/register", handle_get_register, false, false },
-    { "GET", "/login",    handle_get_login,    false, false },
-    { "GET", "/",         handle_get_home,     true,  false },
-    { "GET", "/profile",  handle_get_profile,     true,  false },
+    { "GET", "/register", handle_get_register, false, -1, false },
+    { "GET", "/login",    handle_get_login,    false, -1, false },
+    { "GET", "/",         handle_get_home,     true,  1,  false },
+    { "GET", "/profile",    handle_get_profile,  true,  0,  false },
+    { "GET", "/unapproved",  handle_get_unapproved,  true,  0,  false },
 
-    /* Static file route for resources with prefix matching */
-    { "GET", "/resources/",     handle_static_res,      false, true },
-    { "GET", "/profile/",       handle_static_profile,  false, true }
+    /* Static file routes */
+    { "GET", "/resources/", handle_static_res,     false, -1, true },
+    { "GET", "/profile/",   handle_static_profile, false, -1, true }
 };
 
 static const Route *find_route(const char *method, const char *url) {
@@ -338,7 +345,7 @@ static const Route *find_route(const char *method, const char *url) {
 /* ------------------------------------------------------------------
    REQUEST HANDLER
    ------------------------------------------------------------------ */
-static enum MHD_Result request_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
+   static enum MHD_Result request_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
     (void)version;
     App app = (App)cls;
 
@@ -394,7 +401,7 @@ static enum MHD_Result request_handler(void *cls, struct MHD_Connection *connect
         return ret;
     }
 
-    /* Centralized authentication check for routes that require it */
+    /* Centralized authentication and access level check */
     if (route->requires_auth) {
         jwt_header_t *jwt_header = NULL;
         jwt_payload_t *jwt_payload = NULL;
@@ -410,6 +417,32 @@ static enum MHD_Result request_handler(void *cls, struct MHD_Connection *connect
         }
         req_data->jwt_payload = jwt_payload;
         jwt_free_header(jwt_header);
+
+        /* Check user's access level */
+        int user_access_level = get_user_access_level(app->db, req_data->jwt_payload->sub, app->approval);
+        if (user_access_level == -1) {
+            /* Error retrieving access level, treat as unauthorized */
+            free(req_data->buffer);
+            free(req_data);
+            *con_cls = NULL;
+            if (strcmp(method, "GET") == 0) {
+                return send_redirect(connection, "/login");
+            } else {
+                return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+            }
+        }
+
+        if (user_access_level < route->min_access_level) {
+            /* Insufficient access level */
+            free(req_data->buffer);
+            free(req_data);
+            *con_cls = NULL;
+            if (strcmp(method, "GET") == 0) {
+                return send_redirect(connection, "/unapproved");
+            } else {
+                return send_json_response(connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"Insufficient permissions\"}", NULL);
+            }
+        }
     }
 
     int ret = route->handler(connection, req_data, app, url);

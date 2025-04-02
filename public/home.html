@@ -76,7 +76,7 @@
         .visitor { color: #f0f0f0; }
         .moderator { color: #5555ff; }
         .admin { color: #ffaa00; }
-        .welcome-container {
+        .search-container {
             background-color: #1a1a1a;
             padding: 20px;
             border: 1px solid #333;
@@ -85,7 +85,7 @@
             box-sizing: border-box;
             text-align: center;
         }
-        .welcome-container h1 {
+        .search-container h1 {
             margin: 0;
             font-size: 24px;
         }
@@ -100,7 +100,7 @@
             justify-content: center;
             gap: 10px;
         }
-        .welcome-container button {
+        .search-container button {
             display: flex;
             align-items: center;
             padding: 8px 16px;
@@ -110,10 +110,10 @@
             cursor: pointer;
             text-decoration: none;
         }
-        .welcome-container button:hover {
+        .search-container button:hover {
             background-color: #5a5a5a;
         }
-        .welcome-container button img {
+        .search-container button img {
             width: 20px;
             height: 20px;
             margin-right: 8px;
@@ -197,8 +197,8 @@
             </button>
         </div>
     </div>
-    <div class="welcome-container">
-        <h1>Welcome</h1>
+    <div class="search-container">
+        <h1>Search</h1>
         <div id="admin-section" class="admin-section" style="display: none;">
             <hr>
             <div id="button-container" class="button-container">
@@ -206,7 +206,7 @@
                     <img src="/resources/api.png" alt="API Icon">API
                 </button>
                 <button onclick="window.location.href='/management'">
-                    <img src="/resources/management.png" alt="Management Icon">Management
+                    <img src="/resources/management.png" alt="Management Icon">User
                 </button>
             </div>
         </div>
