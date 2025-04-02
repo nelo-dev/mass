@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" id="favicon">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Keys</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      background-color: #0e0e0e;
+      color: #f0f0f0;
+      background-image: url('/resources/hexagon.png');
+      background-repeat: repeat;
+      background-size: 74px 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .top-bar {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background-color: #1a1a1a;
+      padding: 10px 20px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+      z-index: 100;
+    }
+    .top-bar .logo {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .top-bar .logo img {
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+    }
+    .top-bar .logo span {
+      font-size: 18px;
+    }
+    .top-bar .user-info {
+      display: flex;
+      align-items: center;
+    }
+    .top-bar .user-info span {
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    .top-bar .user-info img#profile-pic {
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      transition: transform 0.6s ease-in-out;
+    }
+    .top-bar .user-info img#profile-pic:hover {
+      animation: pulse 1s infinite;
+    }
+    .top-bar .user-info button {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .top-bar .user-info button img#logout-pic {
+      width: 32px;
+      height: 32px;
+    }
+    .visitor { color: #f0f0f0; }
+    .moderator { color: #5555ff; }
+    .admin { color: #ffaa00; }
+    
+    /* Container for the API keys table */
+    .api-keys-container {
+      margin-top: 80px; /* to clear the fixed top bar */
+      padding: 20px;
+      width: 100%;
+      max-width: 600px;
+      box-sizing: border-box;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #333;
+    }
+    th {
+        background-color: #1a1a1a;
+    }
+    table tr {
+      border-bottom: 1px solid #333;
+    }
+    table td img {
+      vertical-align: middle;
+    }
+    /* Add button style */
+    #addKeyButton {
+        background-color: #77dd77;
+        color: #0e0e0e;
+        padding: 6px 12px;
+        font-size: 14px;
+        border: none;
+        cursor: pointer;
+        display: block;
+        text-align: left;
+        margin: 10px;
+    }
+    #addKeyButton:hover {
+        background-color: #66cc66;
+    }
+    /* API key reveal style */
+    .api-key {
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    @media (max-width: 480px) {
+      .api-keys-container {
+        margin-top: 70px;
+        padding: 10px;
+      }
+      table td {
+        padding: 8px;
+      }
+      #addKeyButton {
+        font-size: 14px;
+        padding: 8px;
+      }
+    }
+    .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            color: #f0f0f0;
+            text-align: center;
+        }
+  </style>
+  <script>
+    // Function to update server title, favicon, and logo
+    async function updateTitleAndFavicon() {
+      try {
+        const response = await fetch('/info', { method: 'POST' });
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        document.title = data.server_name;
+        document.getElementById('favicon').href = data.icon_path;
+        document.getElementById('logo').src = data.icon_path;
+        document.getElementById('server-name').textContent = data.server_name;
+      } catch (error) {
+        console.error('There was a problem with the fetch operation:', error);
+      }
+    }
+    
+    // Load user data and API keys after DOM loads
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const response = await fetch("/user", { method: "POST" });
+        if (!response.ok) throw new Error("Failed to fetch user data");
+        const data = await response.json();
+        const userName = document.getElementById("user-name");
+        userName.textContent = data.name;
+        userName.className = data.role.toLowerCase();
+        document.getElementById("profile-pic").src = data.profile_picture;
+        document.querySelector('.logo').addEventListener('click', () => {
+          window.location.href = '/';
+        });
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        window.location.href = "/login";
+      }
+      updateTitleAndFavicon();
+      loadAPIKeys();
+    });
+    
+    // Fetch and render API keys
+    async function loadAPIKeys() {
+      try {
+        const response = await fetch("/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (!response.ok) throw new Error("Failed to fetch API keys");
+        const keys = await response.json();
+        renderAPIKeys(keys);
+      } catch (error) {
+        console.error("Error fetching API keys:", error);
+      }
+    }
+    
+    // Render API keys in the table
+    function renderAPIKeys(keys) {
+      const table = document.getElementById("apiKeysTable");
+      table.innerHTML = "";
+      
+      // Render each API key row
+      keys.forEach(key => {
+        const row = document.createElement("tr");
+        
+        // Logo cell
+        const logoCell = document.createElement("td");
+        const logoImg = document.createElement("img");
+        logoImg.src = "resources/key.png";
+        logoImg.alt = "Key Logo";
+        logoImg.width = 24;
+        logoImg.height = 24;
+        logoCell.appendChild(logoImg);
+        row.appendChild(logoCell);
+        
+        // API ID cell
+        const idCell = document.createElement("td");
+        idCell.textContent = key.api_id;
+        row.appendChild(idCell);
+        
+        // Username cell
+        const usernameCell = document.createElement("td");
+        usernameCell.textContent = key.username;
+        row.appendChild(usernameCell);
+        
+        // API key cell (click to reveal)
+        const apiKeyCell = document.createElement("td");
+        apiKeyCell.className = "api-key";
+        apiKeyCell.textContent = "Click to reveal";
+        // Store the actual API key in a data attribute
+        apiKeyCell.dataset.apiKey = key.api_key;
+        apiKeyCell.addEventListener("click", function() {
+          this.textContent = this.textContent === "Click to reveal" ? this.dataset.apiKey : "Click to reveal";
+        });
+        row.appendChild(apiKeyCell);
+        
+        // Trash icon cell
+        const trashCell = document.createElement("td");
+        const trashImg = document.createElement("img");
+        trashImg.src = "resources/trash.png";
+        trashImg.alt = "Delete API Key";
+        trashImg.width = 24;
+        trashImg.height = 24;
+        trashImg.style.cursor = "pointer";
+        trashImg.addEventListener("click", function() {
+          deleteKey(key.api_key);
+        });
+        trashCell.appendChild(trashImg);
+        row.appendChild(trashCell);
+        
+        table.appendChild(row);
+      });
+    }
+    
+    // Create a new API key
+    async function createKey() {
+      try {
+        const response = await fetch("/createkey", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (!response.ok) throw new Error("Failed to create API key");
+        loadAPIKeys();
+      } catch (error) {
+        console.error("Error creating API key:", error);
+      }
+    }
+    
+    // Delete an API key
+    async function deleteKey(apiKey) {
+      try {
+        const response = await fetch("/deletekey", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: apiKey })
+        });
+        if (!response.ok) throw new Error("Failed to delete API key");
+        loadAPIKeys();
+      } catch (error) {
+        console.error("Error deleting API key:", error);
+      }
+    }
+    
+    // Logout and redirect
+    function logout() {
+      fetch("/logout", { method: "POST" })
+        .then(() => window.location.href = "/login")
+        .catch(error => console.error("Error logging out:", error));
+    }
+    
+    // Redirect to profile page
+    function goToProfile() {
+      window.location.href = "/profile";
+    }
+  </script>
+</head>
+<body>
+  <div class="top-bar">
+    <div class="logo">
+      <img id="logo" alt="Server Logo">
+      <span id="server-name"></span>
+    </div>
+    <div class="user-info">
+      <span id="user-name"></span>
+      <img id="profile-pic" alt="Profile Picture" onclick="goToProfile()">
+      <button onclick="logout()">
+        <img id="logout-pic" src="/resources/logout.png" alt="Logout">
+      </button>
+    </div>
+  </div>
+  
+  <div class="api-keys-container">
+    <button id="addKeyButton" onclick="createKey()">Create API Key</button>
+    <table>
+        <thead>
+            <tr>
+                <th></th> <!-- Logo Column -->
+                <th>ID</th>
+                <th>Creator</th>
+                <th>Key</th>
+                <th></th> <!-- Trash Icon Column -->
+            </tr>
+        </thead>
+        <tbody id="apiKeysTable">
+            <!-- Table rows are dynamically generated here -->
+        </tbody>
+    </table>
+  </div>
+  
+  <footer class="footer">
+    <p>© nelo-dev 2025</p>
+  </footer>
+</body>
+</html>

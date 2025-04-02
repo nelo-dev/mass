@@ -22,5 +22,8 @@ int get_user_access_level(sqlite3 *db, const char *username, int approval_enable
 char* search_users(sqlite3* db, const char* search_json);
 char *toggle_user_approval_by_requester(sqlite3 *db, const char *json_input, const char *requester_username);
 char *toggle_user_role_by_requester(sqlite3 *db, const char *json_input, const char *requester_username);
+char* create_api_key(sqlite3 *db, const char *request_username, const char *json_input);
+char* destroy_api_key(sqlite3 *db, const char *json_input);
+char* get_all_api_keys(sqlite3 *db);
 
 #endif

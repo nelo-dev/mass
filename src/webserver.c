@@ -265,6 +265,33 @@ static int handle_toggle_role(struct MHD_Connection *connection, RequestData *re
     return ret;
 }
 
+static int handle_create_api_key(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    if (!req_data->jwt_payload) {
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+    }
+    char *user_json = create_api_key(app->db, req_data->jwt_payload->sub, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, user_json, NULL);
+    free(user_json);
+    return ret;
+}
+
+static int handle_delete_api_key(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = destroy_api_key(app->db, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
+static int handle_get_api_keys(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = get_all_api_keys(app->db);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -293,6 +320,11 @@ static int handle_get_unapproved(struct MHD_Connection *connection, RequestData 
 static int handle_get_management(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/management.html");
+}
+
+static int handle_get_api(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/api.html");
 }
 
 /* ------------------------------------------------------------------
@@ -351,6 +383,9 @@ static const Route route_table[] = {
     { "POST", "/users",    handle_users,    true,  2,  false },
     { "POST", "/toggleapproval",    handle_toggle_approval,    true,  2,  false },
     { "POST", "/togglerole",    handle_toggle_role,    true,  2,  false },
+    { "POST", "/createkey",    handle_create_api_key,    true,  3,  false },
+    { "POST", "/deletekey",    handle_delete_api_key,    true,  3,  false },
+    { "POST", "/keys",    handle_get_api_keys,    true,  3,  false },
 
     /* GET routes */
     { "GET", "/register", handle_get_register, false, -1, false },
@@ -359,6 +394,7 @@ static const Route route_table[] = {
     { "GET", "/profile",    handle_get_profile,  true,  0,  false },
     { "GET", "/unapproved",  handle_get_unapproved,  true,  0,  false },
     { "GET", "/management",  handle_get_management,  true,  2,  false },
+    { "GET", "/api",  handle_get_api,  true,  3,  false },
 
     /* Static file routes */
     { "GET", "/resources/", handle_static_res,     false, -1, true },

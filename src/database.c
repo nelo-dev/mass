@@ -85,7 +85,6 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "user_id INTEGER NOT NULL, "
         "api_key TEXT UNIQUE NOT NULL, "
         "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-        "is_active INTEGER DEFAULT 1, "
         "FOREIGN KEY(user_id) REFERENCES user(user_id) ON DELETE CASCADE);"
     };
 
@@ -97,7 +96,6 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "CREATE INDEX IF NOT EXISTS idx_mediatags_media_id ON media_tags(media_id);",
         "CREATE INDEX IF NOT EXISTS idx_mediatags_tag_id ON media_tags(tag_id);",
         "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);",
-        "CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active);",
         "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);",
         "CREATE INDEX IF NOT EXISTS idx_user_approved ON user(approved);"
     };
@@ -792,4 +790,176 @@ char *toggle_user_role_by_requester(sqlite3 *db, const char *json_input, const c
     char *result = json_dumps(response, JSON_COMPACT);
     json_decref(response);
     return result;
+}
+
+char *generate_random_key(size_t length) {
+    const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    char *random_string = malloc(length + 1);
+    if (!random_string) return NULL;
+
+    for (size_t i = 0; i < length; i++) {
+        int key = rand() % (int)(sizeof(charset) - 1);
+        random_string[i] = charset[key];
+    }
+    random_string[length] = '\0';
+    return random_string;
+}
+
+char* create_api_key(sqlite3 *db, const char *request_username, const char *json_input) {
+    (void)json_input;  /* currently not used */
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT user_id FROM user WHERE user_name = ?;";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Prepare failed: %s\n", sqlite3_errmsg(db));
+        goto error;
+    }
+    sqlite3_bind_text(stmt, 1, request_username, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        fprintf(stderr, "User '%s' not found.\n", request_username);
+        sqlite3_finalize(stmt);
+        goto error;
+    }
+    int user_id = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
+    /* Generate a random API key */
+    char *api_key = generate_random_key(32);
+    if (!api_key) {
+        fprintf(stderr, "Failed to generate API key.\n");
+        goto error;
+    }
+
+    /* Insert the new API key record */
+    sql = "INSERT INTO api_keys (user_id, api_key) VALUES (?, ?);";
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Prepare insert failed: %s\n", sqlite3_errmsg(db));
+        free(api_key);
+        goto error;
+    }
+    sqlite3_bind_int(stmt, 1, user_id);
+    sqlite3_bind_text(stmt, 2, api_key, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "Insert failed: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        free(api_key);
+        goto error;
+    }
+    sqlite3_finalize(stmt);
+
+    /* Build success JSON response */
+    json_t *root = json_object();
+    json_object_set_new(root, "status", json_string("success"));
+    json_object_set_new(root, "api_key", json_string(api_key));
+    char *output = json_dumps(root, 0);
+    json_decref(root);
+    free(api_key);
+    return output;
+
+error:
+    {
+        json_t *err = json_object();
+        json_object_set_new(err, "status", json_string("error"));
+        char *err_output = json_dumps(err, 0);
+        json_decref(err);
+        return err_output;
+    }
+}
+
+char* destroy_api_key(sqlite3 *db, const char *json_input) {
+    json_error_t error;
+    json_t *root = json_loads(json_input, 0, &error);
+    if (!root) {
+        fprintf(stderr, "JSON parse error: %s\n", error.text);
+        goto json_error;
+    }
+
+    json_t *j_api_key = json_object_get(root, "api_key");
+    if (!json_is_string(j_api_key)) {
+        fprintf(stderr, "Invalid JSON input. 'api_key' must be a string.\n");
+        json_decref(root);
+        goto json_error;
+    }
+
+    const char *api_key = json_string_value(j_api_key);
+
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "DELETE FROM api_keys WHERE api_key = ?;";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Prepare delete failed: %s\n", sqlite3_errmsg(db));
+        json_decref(root);
+        goto json_error;
+    }
+    sqlite3_bind_text(stmt, 1, api_key, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "Delete failed: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        json_decref(root);
+        goto json_error;
+    }
+    sqlite3_finalize(stmt);
+    json_decref(root);
+
+    json_t *response = json_object();
+    json_object_set_new(response, "status", json_string("success"));
+    char *output = json_dumps(response, 0);
+    json_decref(response);
+    return output;
+
+json_error:
+    {
+        json_t *err = json_object();
+        json_object_set_new(err, "status", json_string("error"));
+        char *err_output = json_dumps(err, 0);
+        json_decref(err);
+        return err_output;
+    }
+}
+
+char* get_all_api_keys(sqlite3 *db) {
+    const char *sql = "SELECT api_keys.api_id, user.user_name, api_keys.api_key, api_keys.created_at "
+                      "FROM api_keys "
+                      "JOIN user ON api_keys.user_id = user.user_id;";
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Prepare failed: %s\n", sqlite3_errmsg(db));
+        goto error;
+    }
+
+    json_t *result_array = json_array();
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        json_t *row_obj = json_object();
+
+        int api_id = sqlite3_column_int(stmt, 0);
+        const unsigned char *username = sqlite3_column_text(stmt, 1);
+        const unsigned char *api_key = sqlite3_column_text(stmt, 2);
+        const unsigned char *created_at = sqlite3_column_text(stmt, 3);
+
+        json_object_set_new(row_obj, "api_id", json_integer(api_id));
+        json_object_set_new(row_obj, "username", json_string(username ? (const char*)username : ""));
+        json_object_set_new(row_obj, "api_key", json_string(api_key ? (const char*)api_key : ""));
+        json_object_set_new(row_obj, "created_at", json_string(created_at ? (const char*)created_at : ""));
+
+        json_array_append_new(result_array, row_obj);
+    }
+    sqlite3_finalize(stmt);
+
+    char *output = json_dumps(result_array, 0);
+    json_decref(result_array);
+    return output;
+
+error:
+    {
+        json_t *err = json_object();
+        json_object_set_new(err, "status", json_string("error"));
+        char *err_output = json_dumps(err, 0);
+        json_decref(err);
+        return err_output;
+    }
 }

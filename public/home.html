@@ -109,6 +109,7 @@
             color: #f0f0f0;
             cursor: pointer;
             text-decoration: none;
+            width: 100%;
         }
         .search-container button:hover {
             background-color: #5a5a5a;
@@ -127,6 +128,14 @@
             .welcome-container {
                 margin: 10px;
             }
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            color: #f0f0f0;
+            text-align: center;
         }
     </style>
     <script>
@@ -155,13 +164,15 @@
 
                 document.getElementById("profile-pic").src = data.profile_picture;
 
-                // Show admin section only for admin or owner
                 const role = data.role.toLowerCase();
                 if (role === 'admin' || role === 'moderator') {
                     document.getElementById("admin-section").style.display = 'block';
+                    document.getElementById("users-button").style.display = 'flex';
+                }
+                if (role === 'admin') {
+                    document.getElementById("api-button").style.display = 'flex';
                 }
 
-                // Add click event to logo
                 document.querySelector('.logo').addEventListener('click', () => {
                     window.location.href = '/';
                 });
@@ -202,14 +213,18 @@
         <div id="admin-section" class="admin-section" style="display: none;">
             <hr>
             <div id="button-container" class="button-container">
-                <button onclick="window.location.href='/api'">
+                <button id="api-button" class="full-width" onclick="window.location.href='/api'" style="display: none;">
                     <img src="/resources/api.png" alt="API Icon">API
                 </button>
-                <button onclick="window.location.href='/management'">
+                <button id="users-button" class="full-width" onclick="window.location.href='/management'" style="display: none;">
                     <img src="/resources/management.png" alt="Management Icon">Users
                 </button>
             </div>
-        </div>
+        </div>        
     </div>
+
+    <footer class="footer">
+        <p>© nelo-dev 2025</p>
+    </footer>
 </body>
 </html>
