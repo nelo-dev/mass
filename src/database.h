@@ -26,5 +26,6 @@ char *toggle_user_role_by_requester(sqlite3 *db, const char *json_input, const c
 char* create_api_key(sqlite3 *db, const char *request_username, const char *json_input);
 char* destroy_api_key(sqlite3 *db, const char *json_input);
 char* get_all_api_keys(sqlite3 *db);
+char* insert_media(sqlite3* db, Downloader* dl, const char* input_json, const char* media_dir, const char* preview_dir, const char* description_dir);
 
 #endif

@@ -293,9 +293,11 @@ static int handle_get_api_keys(struct MHD_Connection *connection, RequestData *r
 }
 
 static int handle_upload(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
-    (void)req_data; (void)app; (void)url;
-    const char *msg = "{\"success\":\"Uploaded\"}";
-    return send_json_response(connection, MHD_HTTP_OK, msg, NULL);
+    (void)url;
+    char *response_json = insert_media(app->db, app->dl, req_data->buffer, app->media_path, app->preview_path, app->description_path);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
 }
 
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {

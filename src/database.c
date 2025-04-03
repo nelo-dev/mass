@@ -973,3 +973,285 @@ error:
         return err_output;
     }
 }
+
+// Helper function to convert an integer to a 6-character base32 string
+char* int_to_base32(int64_t num, int length) {
+    const char* alphabet = "0123456789abcdefghijklmnopqrstuv";
+    char* result = malloc(length + 1);
+    if (!result) return NULL;
+    result[length] = '\0';
+    for (int i = length - 1; i >= 0; i--) {
+        int remainder = num % 32;
+        result[i] = alphabet[remainder];
+        num /= 32;
+    }
+    return result;
+}
+
+// Helper function to extract file extension from a URL
+const char* get_extension(const char* url) {
+    const char* dot = strrchr(url, '.');
+    if (!dot || dot == url) return "bin"; // Default extension if none found
+    return dot + 1;
+}
+
+// Helper function to create error JSON
+char* error_json(const char* message) {
+    json_t* root = json_object();
+    json_object_set_new(root, "status", json_string("error"));
+    json_object_set_new(root, "message", json_string(message));
+    char* result = json_dumps(root, JSON_COMPACT);
+    json_decref(root);
+    return result;
+}
+
+// Helper function to create success JSON
+char* success_json() {
+    json_t* root = json_object();
+    json_object_set_new(root, "status", json_string("success"));
+    char* result = json_dumps(root, JSON_COMPACT);
+    json_decref(root);
+    return result;
+}
+
+char* insert_media(sqlite3* db, Downloader* dl, const char* input_json, 
+                  const char* media_dir, const char* preview_dir, const char* description_dir) {
+    // Parse the input JSON
+    json_t* root = json_loads(input_json, 0, NULL);
+    if (!root) {
+        return error_json("Invalid JSON");
+    }
+
+    // Extract required fields
+    const char* api_key = json_string_value(json_object_get(root, "api_key"));
+    const char* dl_url = json_string_value(json_object_get(root, "dl_url"));
+    const char* preview_url = json_string_value(json_object_get(root, "preview_url"));
+    const char* description = json_string_value(json_object_get(root, "description"));
+    json_t* web_id_json = json_object_get(root, "web_id");
+    const char* title = json_string_value(json_object_get(root, "title"));
+    const char* creator = json_string_value(json_object_get(root, "creator"));
+    json_t* score_json = json_object_get(root, "score");
+    json_t* tags_json = json_object_get(root, "tags");
+
+    // Validate required fields
+    if (!api_key || !dl_url || !preview_url || !description || !json_is_integer(web_id_json) || 
+        !title || !creator || !json_is_integer(score_json) || !json_is_array(tags_json)) {
+        json_decref(root);
+        return error_json("Missing or invalid required fields");
+    }
+
+    int web_id = json_integer_value(web_id_json);
+    int score = json_integer_value(score_json);
+
+    // Validate API key
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, "SELECT active FROM api_keys WHERE api_key = ?", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        json_decref(root);
+        return error_json("Database error during API key validation");
+    }
+    sqlite3_bind_text(stmt, 1, api_key, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW || sqlite3_column_int(stmt, 0) != 1) {
+        sqlite3_finalize(stmt);
+        json_decref(root);
+        return error_json("Invalid or inactive API key");
+    }
+    sqlite3_finalize(stmt);
+
+    // Start transaction
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        json_decref(root);
+        return error_json("Failed to start transaction");
+    }
+
+    // Insert media with temporary paths
+    char* temp_desc_path = malloc(strlen(dl_url) + 6); // "_desc\0"
+    if (!temp_desc_path) {
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Memory allocation failed");
+    }
+    sprintf(temp_desc_path, "%s_desc", dl_url);
+
+    const char* insert_sql = "INSERT INTO media (url, preview_url, path, preview_path, "
+                             "description_path, title, creator, score, web_id) "
+                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        free(temp_desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Database error during media insertion");
+    }
+
+    sqlite3_bind_text(stmt, 1, dl_url, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, preview_url, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, dl_url, -1, SQLITE_STATIC); // Temporary path
+    sqlite3_bind_text(stmt, 4, preview_url, -1, SQLITE_STATIC); // Temporary preview_path
+    sqlite3_bind_text(stmt, 5, temp_desc_path, -1, SQLITE_STATIC); // Temporary description_path
+    sqlite3_bind_text(stmt, 6, title, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, creator, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 8, score);
+    sqlite3_bind_int(stmt, 9, web_id);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        free(temp_desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Failed to insert media");
+    }
+    sqlite3_finalize(stmt);
+    int64_t media_id = sqlite3_last_insert_rowid(db);
+
+    // Generate base32 string from media_id
+    char* base32_str = int_to_base32(media_id, 6);
+    if (!base32_str) {
+        free(temp_desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Failed to generate base32 string");
+    }
+
+    // Extract file extensions
+    const char* media_ext = get_extension(dl_url);
+    const char* preview_ext = get_extension(preview_url);
+
+    // Construct file paths
+    char subdir[6]; // "/ab/cd"
+    sprintf(subdir, "/%c%c/%c%c", base32_str[0], base32_str[1], base32_str[2], base32_str[3]);
+
+    // Media path
+    char* media_dir_path = malloc(strlen(media_dir) + 6 + 1);
+    char* media_path = malloc(strlen(media_dir) + 6 + 1 + 6 + 1 + strlen(media_ext) + 1);
+    if (!media_dir_path || !media_path) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Memory allocation failed");
+    }
+    sprintf(media_dir_path, "%s%s", media_dir, subdir);
+    sprintf(media_path, "%s/%s.%s", media_dir_path, base32_str, media_ext);
+    folder_create(media_dir_path);
+
+    // Preview path
+    char* preview_dir_path = malloc(strlen(preview_dir) + 6 + 1);
+    char* preview_path = malloc(strlen(preview_dir) + 6 + 1 + 6 + 1 + strlen(preview_ext) + 1);
+    if (!preview_dir_path || !preview_path) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Memory allocation failed");
+    }
+    sprintf(preview_dir_path, "%s%s", preview_dir, subdir);
+    sprintf(preview_path, "%s/%s.%s", preview_dir_path, base32_str, preview_ext);
+    folder_create(preview_dir_path);
+
+    // Description path
+    char* desc_dir_path = malloc(strlen(description_dir) + 6 + 1);
+    char* desc_path = malloc(strlen(description_dir) + 6 + 1 + 6 + 5); // ".html"
+    if (!desc_dir_path || !desc_path) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Memory allocation failed");
+    }
+    sprintf(desc_dir_path, "%s%s", description_dir, subdir);
+    sprintf(desc_path, "%s/%s.html", desc_dir_path, base32_str);
+    folder_create(desc_dir_path);
+
+    // Download media and preview, save description
+    downloader_add(dl, dl_url, media_path);
+    downloader_add(dl, preview_url, preview_path);
+    if (file_write(desc_path, description, strlen(description)) != 0) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Failed to write description file");
+    }
+
+    // Update media with actual paths
+    const char* update_sql = "UPDATE media SET path=?, preview_path=?, description_path=? WHERE media_id=?";
+    rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Database error during path update");
+    }
+    sqlite3_bind_text(stmt, 1, media_path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, preview_path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, desc_path, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 4, media_id);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Failed to update media paths");
+    }
+    sqlite3_finalize(stmt);
+
+    // Insert tags
+    size_t index;
+    json_t* tag_json;
+    json_array_foreach(tags_json, index, tag_json) {
+        const char* tag = json_string_value(tag_json);
+        if (!tag) continue;
+
+        // Insert into tags if not exists
+        rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO tags (tag_name) VALUES (?)", -1, &stmt, NULL);
+        sqlite3_bind_text(stmt, 1, tag, -1, SQLITE_STATIC);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        // Get tag_id
+        rc = sqlite3_prepare_v2(db, "SELECT tag_id FROM tags WHERE tag_name=?", -1, &stmt, NULL);
+        sqlite3_bind_text(stmt, 1, tag, -1, SQLITE_STATIC);
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            int tag_id = sqlite3_column_int(stmt, 0);
+            sqlite3_finalize(stmt);
+
+            // Insert into media_tags
+            rc = sqlite3_prepare_v2(db, "INSERT INTO media_tags (media_id, tag_id) VALUES (?, ?)", -1, &stmt, NULL);
+            sqlite3_bind_int64(stmt, 1, media_id);
+            sqlite3_bind_int(stmt, 2, tag_id);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        } else {
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Commit transaction
+    rc = sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        json_decref(root);
+        return error_json("Failed to commit transaction");
+    }
+
+    // Cleanup
+    free(base32_str);
+    free(temp_desc_path);
+    free(media_dir_path);
+    free(media_path);
+    free(preview_dir_path);
+    free(preview_path);
+    free(desc_dir_path);
+    free(desc_path);
+    json_decref(root);
+
+    return success_json();
+}

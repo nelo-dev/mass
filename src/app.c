@@ -46,11 +46,11 @@ void init_config()
     add_comment(CFG_PATH, "New users require approval:");
     add_param(CFG_PATH, "approval", "1");
     add_comment(CFG_PATH, "Media Folder");
-    add_param(CFG_PATH, "media_path", "data/media/");
+    add_param(CFG_PATH, "media_path", "data/media");
     add_comment(CFG_PATH, "Preview Folder");
-    add_param(CFG_PATH, "preview_path", "data/preview/");
+    add_param(CFG_PATH, "preview_path", "data/preview");
     add_comment(CFG_PATH, "Description Folder");
-    add_param(CFG_PATH, "description_path", "data/description/");
+    add_param(CFG_PATH, "description_path", "data/description");
 }
 
 App create_app()
@@ -62,17 +62,17 @@ App create_app()
 
     if (get_param_string(CFG_PATH, "media_path", app->media_path, 256) == -1) {
         fprintf(stderr, "Error: Invalid or missing media_path. Using default path data/media/.\n");
-        strcpy(app->media_path, "data/media/");
+        strcpy(app->media_path, "data/media");
     }
 
     if (get_param_string(CFG_PATH, "preview_path", app->preview_path, 256) == -1) {
         fprintf(stderr, "Error: Invalid or missing preview_path. Using default path data/preview/.\n");
-        strcpy(app->preview_path, "data/preview/");
+        strcpy(app->preview_path, "data/preview");
     }
 
     if (get_param_string(CFG_PATH, "description_path", app->description_path, 256) == -1) {
         fprintf(stderr, "Error: Invalid or missing description_path. Using default path data/description/.\n");
-        strcpy(app->description_path, "data/description/");
+        strcpy(app->description_path, "data/description");
     }
 
     char db_path[MAX_PATH_LEN];
