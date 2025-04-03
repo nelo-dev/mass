@@ -3,6 +3,7 @@
 
 #include <sqlite3.h>
 #include "lib/filelib.h"
+#include "lib/downloader.h"
 
 typedef enum {
     ACCESS_UNAPPROVED = 0,  // Unapproved user

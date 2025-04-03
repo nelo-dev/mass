@@ -23,12 +23,12 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
 
     const char *pragmas[] = {
         "PRAGMA journal_mode=WAL;",
-        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA synchronous=OFF;",
         "PRAGMA mmap_size=268435456;",
         "PRAGMA temp_store=MEMORY;",
-        "PRAGMA auto_vacuum=FULL;",
         "PRAGMA page_size=4096;",
         "PRAGMA optimize;"
+        "PRAGMA foreign_keys = OFF;"
     };
 
     for (size_t i = 0; i < sizeof(pragmas) / sizeof(pragmas[0]); i++) {
@@ -799,11 +799,16 @@ char *generate_random_key(size_t length) {
     char *random_string = malloc(length + 1);
     if (!random_string) return NULL;
 
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    unsigned int seed = (unsigned int)(ts.tv_nsec ^ ts.tv_sec);
+    srand(seed);
+
     for (size_t i = 0; i < length; i++) {
-        int key = rand() % (int)(sizeof(charset) - 1);
-        random_string[i] = charset[key];
+        random_string[i] = charset[rand() % (sizeof(charset) - 1)];
     }
     random_string[length] = '\0';
+
     return random_string;
 }
 

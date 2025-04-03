@@ -292,6 +292,12 @@ static int handle_get_api_keys(struct MHD_Connection *connection, RequestData *r
     return ret;
 }
 
+static int handle_upload(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)app; (void)url;
+    const char *msg = "{\"success\":\"Uploaded\"}";
+    return send_json_response(connection, MHD_HTTP_OK, msg, NULL);
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -374,32 +380,32 @@ typedef struct {
 
 static const Route route_table[] = {
     /* POST routes */
-    { "POST", "/register", handle_register, false, -1, false },
-    { "POST", "/login",    handle_login,    false, -1, false },
-    { "POST", "/user",     handle_get_user, true,  0,  false },
-    { "POST", "/logout",   handle_logout,   true,  0,  false },
-    { "POST", "/info",     handle_info,     false, -1, false },
-    { "POST", "/profile",  handle_profile,  true,  0,  false },
-    { "POST", "/users",    handle_users,    true,  2,  false },
-    { "POST", "/toggleapproval",    handle_toggle_approval,    true,  2,  false },
-    { "POST", "/togglerole",    handle_toggle_role,    true,  2,  false },
-    { "POST", "/createkey",    handle_create_api_key,    true,  3,  false },
-    { "POST", "/deletekey",    handle_delete_api_key,    true,  3,  false },
-    { "POST", "/keys",    handle_get_api_keys,    true,  3,  false },
+    {"POST", "/register", handle_register, false, -1, false},
+    {"POST", "/login", handle_login, false, -1, false},
+    {"POST", "/user", handle_get_user, true, 0, false},
+    {"POST", "/logout", handle_logout, true, 0, false},
+    {"POST", "/info", handle_info, false, -1, false},
+    {"POST", "/profile", handle_profile, true, 0, false},
+    {"POST", "/users", handle_users, true, 2, false},
+    {"POST", "/toggleapproval", handle_toggle_approval, true, 2, false},
+    {"POST", "/togglerole", handle_toggle_role, true, 2, false},
+    {"POST", "/createkey", handle_create_api_key, true, 3, false},
+    {"POST", "/deletekey", handle_delete_api_key, true, 3, false},
+    {"POST", "/keys", handle_get_api_keys, true, 3, false},
+    {"POST", "/upload", handle_upload, false, -1, false},
 
     /* GET routes */
-    { "GET", "/register", handle_get_register, false, -1, false },
-    { "GET", "/login",    handle_get_login,    false, -1, false },
-    { "GET", "/",         handle_get_home,     true,  1,  false },
-    { "GET", "/profile",    handle_get_profile,  true,  0,  false },
-    { "GET", "/unapproved",  handle_get_unapproved,  true,  0,  false },
-    { "GET", "/management",  handle_get_management,  true,  2,  false },
-    { "GET", "/api",  handle_get_api,  true,  3,  false },
+    {"GET", "/register", handle_get_register, false, -1, false},
+    {"GET", "/login", handle_get_login, false, -1, false},
+    {"GET", "/", handle_get_home, true, 1, false},
+    {"GET", "/profile", handle_get_profile, true, 0, false},
+    {"GET", "/unapproved", handle_get_unapproved, true, 0, false},
+    {"GET", "/management", handle_get_management, true, 2, false},
+    {"GET", "/api", handle_get_api, true, 3, false},
 
     /* Static file routes */
-    { "GET", "/resources/", handle_static_res,     false, -1, true },
-    { "GET", "/profile/",   handle_static_profile, false, -1, true }
-};
+    {"GET", "/resources/", handle_static_res, false, -1, true},
+    {"GET", "/profile/", handle_static_profile, false, -1, true}};
 
 static const Route *find_route(const char *method, const char *url) {
     for (size_t i = 0; i < sizeof(route_table)/sizeof(route_table[0]); i++) {

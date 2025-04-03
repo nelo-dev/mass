@@ -4,8 +4,9 @@
 #include "lib/config.h"
 #include "lib/filelib.h"
 #include "lib/downloader.h"
-#include "microhttpd.h"
-#include "sqlite3.h"
+#include "database.h"
+#include <microhttpd.h>
+#include <sqlite3.h>
 
 #define CFG_PATH        "mass.cfg"
 #define MAX_PATH_LEN    4096
@@ -20,6 +21,9 @@ typedef struct App_t {
     char profile_path[256];
     int max_profile_size;
     int approval;
+    char media_path[256];
+    char preview_path[256];
+    char description_path[256];
 } App_t;
 
 typedef App_t * App;
