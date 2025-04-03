@@ -64,6 +64,7 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "preview_url TEXT UNIQUE NOT NULL, "
         "path TEXT UNIQUE NOT NULL, "
         "preview_path TEXT UNIQUE NOT NULL, "
+        "description_path TEXT UNIQUE NOT NULL, "
         "title TEXT, "
         "creator TEXT, "
         "score INTEGER, "
@@ -80,10 +81,12 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE, "
         "FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE);",
 
+        // Updated api_keys table with an active column
         "CREATE TABLE IF NOT EXISTS api_keys ("
         "api_id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "user_id INTEGER NOT NULL, "
         "api_key TEXT UNIQUE NOT NULL, "
+        "active INTEGER DEFAULT 1, "
         "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
         "FOREIGN KEY(user_id) REFERENCES user(user_id) ON DELETE CASCADE);"
     };
@@ -550,7 +553,6 @@ int update_profile_picture(sqlite3 *db, const char *username, const unsigned cha
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     
-    struct stat st = {0};
     if (folder_create(profile_pic_path) != 0) {
         sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         return -1;
@@ -831,7 +833,7 @@ char* create_api_key(sqlite3 *db, const char *request_username, const char *json
         goto error;
     }
 
-    /* Insert the new API key record */
+    /* Insert the new API key record (active by default) */
     sql = "INSERT INTO api_keys (user_id, api_key) VALUES (?, ?);";
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -887,17 +889,18 @@ char* destroy_api_key(sqlite3 *db, const char *json_input) {
     const char *api_key = json_string_value(j_api_key);
 
     sqlite3_stmt *stmt = NULL;
-    const char *sql = "DELETE FROM api_keys WHERE api_key = ?;";
+    // Update the API key record to set active to 0 (deactivation)
+    const char *sql = "UPDATE api_keys SET active = 0 WHERE api_key = ?;";
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Prepare delete failed: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "Prepare update failed: %s\n", sqlite3_errmsg(db));
         json_decref(root);
         goto json_error;
     }
     sqlite3_bind_text(stmt, 1, api_key, -1, SQLITE_STATIC);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
-        fprintf(stderr, "Delete failed: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "Update failed: %s\n", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
         json_decref(root);
         goto json_error;
@@ -922,9 +925,11 @@ json_error:
 }
 
 char* get_all_api_keys(sqlite3 *db) {
+    // Only retrieve active API keys
     const char *sql = "SELECT api_keys.api_id, user.user_name, api_keys.api_key, api_keys.created_at "
                       "FROM api_keys "
-                      "JOIN user ON api_keys.user_id = user.user_id;";
+                      "JOIN user ON api_keys.user_id = user.user_id "
+                      "WHERE api_keys.active = 1;";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {

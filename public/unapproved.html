@@ -27,6 +27,7 @@
             width: 100%;
             max-width: 400px;
             box-sizing: border-box;
+            text-align: center;
         }
         .header {
             display: flex;
@@ -50,7 +51,7 @@
             height: 100px;
             object-fit: cover;
             margin-bottom: 10px;
-            cursor: pointer; /* Indicates clickability */
+            cursor: pointer;
         }
         .welcome-message {
             font-size: 20px;
@@ -61,16 +62,24 @@
             text-align: left;
             margin-bottom: 20px;
         }
-        button {
+        .button {
             width: 100%;
             padding: 10px;
             background-color: #4a4a4a;
             border: none;
             color: #f0f0f0;
             cursor: pointer;
-            margin-top: 15px;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
-        button:hover {
+        .button img {
+            width: 16px;
+            height: 16px;
+        }
+        .button:hover {
             background-color: #5a5a5a;
         }
         @media (max-width: 480px) {
@@ -121,6 +130,10 @@
             await fetch('/logout', { method: 'POST' });
             window.location.href = '/login';
         }
+
+        function retry() {
+            window.location.href = '/';
+        }
     </script>
 </head>
 <body>
@@ -135,8 +148,13 @@
             </a>
             <div id="welcome-message" class="welcome-message"></div>
         </div>
-        <p class="info-message">Your account has not been approved yet or you try to access a protected page. Please contact a moderator or admin to get access.</p>
-        <button onclick="logout()">Logout</button>
+        <p class="info-message">Your account has not been approved yet or you tried to access a protected page. Please contact a moderator or admin to get access.</p>
+        <button class="button" onclick="retry()">
+            <img src="/resources/retry.png" alt="Retry"> Retry
+        </button>
+        <button class="button" onclick="logout()">
+            <img src="/resources/logout.png" alt="Logout"> Logout
+        </button>
     </div>
 </body>
 </html>
