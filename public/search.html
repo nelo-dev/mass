@@ -90,7 +90,6 @@
       border-right: none;
       background-color: #0a0a0a9a;
       border-right: 1px solid #333;
-      border-bottom: 1px solid #333;
     }
     .search-sidebar h2 {
       font-size: 18px;
@@ -227,6 +226,16 @@
       font-size: 14px;
       margin: 8px 0 2px;
     }
+
+    .grid-item h3 a {
+      color: #f0f0f0;
+      text-decoration: none;
+    }
+
+    .grid-item h3 a:hover {
+      text-decoration: underline;
+    }
+
     .grid-item p.creator {
       font-size: 12px;
       margin: 0;
@@ -249,10 +258,6 @@
       .grid {
         grid-template-columns: repeat(2, 1fr);
       }
-    }
-    .footer {
-      text-align: center;
-      color: #f0f0f0;
     }
   </style>
   <script>
@@ -314,14 +319,25 @@
         grid.innerHTML = "<p>No results found.</p>";
         return;
       }
+
+      const params = getQueryParams(); // Get current search parameters
+
       results.forEach(item => {
         const gridItem = document.createElement("div");
         gridItem.className = "grid-item";
+
+        // Build the URL for redirection
+        const postUrl = new URL("/post", window.location.origin);
+        postUrl.searchParams.set("media_id", item.media_id);
+
         gridItem.innerHTML = `
-          <img src="${item.preview_path}" alt="${item.title}">
-          <h3>${item.title}</h3>
+          <a href="${postUrl.toString()}">
+            <img src="${item.preview_path}" alt="${item.title}">
+          </a>
+          <h3><a href="${postUrl.toString()}">${item.title}</a></h3>
           <p class="creator">by ${item.creator || "Unknown"}</p>
         `;
+
         grid.appendChild(gridItem);
       });
     }
@@ -512,8 +528,8 @@
         <label>Sort By</label>
         <div class="checkbox-group">
           <label><input type="radio" name="sort-by" value="score"> Score</label>
-          <label><input type="radio" name="sort-by" value="media_id"> Media</label>
           <label><input type="radio" name="sort-by" value="web_id"> Web ID</label>
+          <label><input type="radio" name="sort-by" value="media_id"> ID</label>
         </div>
         <label>Order</label>
         <div class="checkbox-group">
@@ -529,9 +545,5 @@
       <div id="results-grid" class="grid"></div>
     </div>
   </div>
-
-  <footer class="footer">
-    <p>© nelo-dev 2025</p>
-  </footer>
 </body>
 </html>

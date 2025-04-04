@@ -1528,3 +1528,91 @@ char* autocomplete_tags(sqlite3 *db, const char *json_input) {
 
     return result_json ? result_json : json_dumps(json_pack("{s:s}", "error", "Failed to generate response"), JSON_COMPACT);
 }
+
+char* get_media_info(sqlite3 *db, const char *json_input) {
+    json_t *root;
+    json_error_t error;
+    root = json_loads(json_input, 0, &error);
+    if (!root) {
+        json_t *error_json = json_object();
+        json_object_set_new(error_json, "error", json_string("Invalid JSON input"));
+        char *error_response = json_dumps(error_json, JSON_COMPACT);
+        json_decref(error_json);
+        return error_response;
+    }
+
+    json_t *media_id_json = json_object_get(root, "media_id");
+    if (!json_is_integer(media_id_json)) {
+        json_decref(root);
+        json_t *error_json = json_object();
+        json_object_set_new(error_json, "error", json_string("Missing or invalid media_id"));
+        char *error_response = json_dumps(error_json, JSON_COMPACT);
+        json_decref(error_json);
+        return error_response;
+    }
+    int media_id = json_integer_value(media_id_json);
+    json_decref(root);
+
+    const char *query = 
+        "SELECT media_id, url, preview_url, path, preview_path, description_path, title, creator, score, web_id "
+        "FROM media WHERE media_id = ?;";
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        json_t *error_json = json_object();
+        json_object_set_new(error_json, "error", json_string("Database query failed"));
+        char *error_response = json_dumps(error_json, JSON_COMPACT);
+        json_decref(error_json);
+        return error_response;
+    }
+    sqlite3_bind_int(stmt, 1, media_id);
+
+    json_t *media_json = json_object();
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        json_object_set_new(media_json, "media_id", json_integer(sqlite3_column_int(stmt, 0)));
+        json_object_set_new(media_json, "url", json_string((const char*)sqlite3_column_text(stmt, 1)));
+        json_object_set_new(media_json, "preview_url", json_string((const char*)sqlite3_column_text(stmt, 2)));
+        json_object_set_new(media_json, "path", json_string((const char*)sqlite3_column_text(stmt, 3)));
+        json_object_set_new(media_json, "preview_path", json_string((const char*)sqlite3_column_text(stmt, 4)));
+        json_object_set_new(media_json, "description_path", json_string((const char*)sqlite3_column_text(stmt, 5)));
+        json_object_set_new(media_json, "title", json_string((const char*)sqlite3_column_text(stmt, 6)));
+        json_object_set_new(media_json, "creator", json_string((const char*)sqlite3_column_text(stmt, 7)));
+        json_object_set_new(media_json, "score", json_integer(sqlite3_column_int(stmt, 8)));
+        json_object_set_new(media_json, "web_id", json_integer(sqlite3_column_int(stmt, 9)));
+    } else {
+        json_decref(media_json);
+        sqlite3_finalize(stmt);
+        json_t *error_json = json_object();
+        json_object_set_new(error_json, "error", json_string("Media entry not found"));
+        char *error_response = json_dumps(error_json, JSON_COMPACT);
+        json_decref(error_json);
+        return error_response;
+    }
+    sqlite3_finalize(stmt);
+
+    const char *tags_query = 
+        "SELECT t.tag_name FROM tags t "
+        "JOIN media_tags mt ON t.tag_id = mt.tag_id "
+        "WHERE mt.media_id = ?;";
+
+    if (sqlite3_prepare_v2(db, tags_query, -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(media_json);
+        json_t *error_json = json_object();
+        json_object_set_new(error_json, "error", json_string("Failed to retrieve tags"));
+        char *error_response = json_dumps(error_json, JSON_COMPACT);
+        json_decref(error_json);
+        return error_response;
+    }
+    sqlite3_bind_int(stmt, 1, media_id);
+
+    json_t *tags_array = json_array();
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json_array_append_new(tags_array, json_string((const char*)sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+    json_object_set_new(media_json, "tags", tags_array);
+
+    char *result = json_dumps(media_json, JSON_COMPACT);
+    json_decref(media_json);
+    return result;
+}

@@ -316,6 +316,14 @@ static int handle_autotag(struct MHD_Connection *connection, RequestData *req_da
     return ret;
 }
 
+static int handle_mediainfo(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = get_media_info(app->db, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -354,6 +362,11 @@ static int handle_get_api(struct MHD_Connection *connection, RequestData *req_da
 static int handle_get_search(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/search.html");
+}
+
+static int handle_get_post(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/post.html");
 }
 
 /* ------------------------------------------------------------------
@@ -460,6 +473,7 @@ static const Route route_table[] = {
     {"POST", "/upload", handle_upload, false, -1, false},
     {"POST", "/search", handle_search, true, 1, false},
     {"POST", "/autotag", handle_autotag, true, 1, false},
+    {"POST", "/mediainfo", handle_mediainfo, true, 1, false},
 
     /* GET routes */
     {"GET", "/register", handle_get_register, false, -1, false},
@@ -470,13 +484,14 @@ static const Route route_table[] = {
     {"GET", "/management", handle_get_management, true, 2, false},
     {"GET", "/api", handle_get_api, true, 3, false},
     {"GET", "/search", handle_get_search, true, 1, false},
+    {"GET", "/post", handle_get_post, true, 1, false},
 
     /* Static file routes */
     {"GET", "/resources/", handle_static_res, false, -1, true},
     {"GET", "/profile/", handle_static_profile, false, -1, true},
     {"GET", "/media/", handle_static_media, false, -1, true},
     {"GET", "/preview/", handle_static_preview, false, -1, true},
-    {"GET", "/description/", handle_static_description, false, -1, true}
+    {"GET", "/description/", handle_static_description, false, -1, true},
 };
 
 static const Route *find_route(const char *method, const char *url) {

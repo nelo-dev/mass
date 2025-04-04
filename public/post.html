@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Post</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: #0e0e0e;
+            color: #f0f0f0;
+            background-image: url('/resources/hexagon.png');
+            background-repeat: repeat;
+            background-size: 74px 44px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /** Top Bar Styles **/
+        .top-bar {
+            top: 0;
+            width: 100%;
+            background-color: #1a1a1a;
+            padding: 10px 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+            z-index: 1000;
+        }
+        .top-bar .logo {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .top-bar .logo img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .top-bar .logo span {
+            font-size: 18px;
+        }
+        .top-bar .user-info {
+            display: flex;
+            align-items: center;
+        }
+        .top-bar .user-info span {
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .top-bar .user-info img#profile-pic {
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            transition: transform 0.6s ease-in-out;
+        }
+        .top-bar .user-info img#profile-pic:hover {
+            animation: pulse 1s infinite;
+        }
+        .top-bar .user-info button {
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .top-bar .user-info button img#logout-pic {
+            width: 32px;
+            height: 32px;
+        }
+        .visitor { color: #f0f0f0; }
+        .moderator { color: #5555ff; }
+        .admin { color: #ffaa00; }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /** Main Content Styles **/
+        .main-content {
+            display: flex;
+            flex-direction: row;
+            flex: 1;
+        }
+        .sidebar {
+            width: 259px;
+            padding-left: 20px;
+            padding-top: 20px;
+            background-color: #0a0a0a9a;
+            border-right: 1px solid #333;
+        }
+        .media-container {
+            flex: 1;
+            margin: 20px;
+        }
+        .tags {
+            margin-top: 10px;
+        }
+        .tag {
+            display:block;
+            color: #cbd4d8;
+            margin: 2px;
+            margin-left: 10px;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #08080877;
+            border: 1px solid #333;
+            max-width: 1200px;
+        }
+
+        .description {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #08080877;
+            border: 1px solid #333;
+            max-width: 1200px;
+        }
+
+        .description img {
+            max-width: 30px;
+        }
+ 
+        .description * {
+            color: #f0f0f0;
+        }
+
+        img, video {
+            max-width: 100%;
+            height: auto;
+            max-height: 800px;
+        }
+
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+        }
+
+        #media-text {
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            background-color: #070707bb;
+            color: #fbe6ff;
+            padding: 10px;
+            border: 1px solid #333;
+            max-width: 1200px;
+        }
+        #download-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #0066ff;
+            color: #f0f0f0;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        #download-link:hover {
+            background-color: rgb(0, 89, 255);
+        }
+
+        /** Footer Styles **/
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            color: #f0f0f0;
+            text-align: left;
+            margin-left: 20px;
+        }
+
+        .stats {
+            color: #f0f0f0;
+        }
+
+        .stats strong {
+            color: #ffae00;
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                padding: 10px;
+                box-sizing: border-box;
+            }
+
+            .tags {
+                display: none;
+            }
+
+            .tags-title {
+                display: none;
+            }
+
+            img#media-image {
+                display: block; /* Prevents inline descender space */
+                width: 100%;
+                margin: 0; /* Ensure no margins */
+            }
+
+            #download-link {
+                display: block;
+                margin: 0px;
+                width: 100%;
+                border-radius: 0px;
+                padding: 10px;
+                box-sizing: border-box;
+                text-align: center;
+                font-weight:bolder;
+            }
+
+            #media-title {
+                text-align: center;
+            }
+
+            .media-container {
+                margin: 0px;
+            }
+            img#media-image, #description {
+                width: 100%;
+            }
+
+            .description {
+                padding: 10px;
+                border-left: 0px;
+                border-right: 0px;
+                border-bottom: 0px;
+                box-sizing: border-box;
+                padding-bottom: 40px;
+            }
+
+            .footer {
+                text-align: center;
+                margin: 0px;
+            }
+
+            #media-text {
+                border-left: 0px;
+                border-right: 0px;
+            }
+        }
+    </style>
+    <script>
+        /** Update Title and Favicon **/
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to fetch server info');
+                const data = await response.json();
+                document.title = data.server_name;
+                document.getElementById('favicon').href = data.icon_path;
+                document.getElementById('logo').src = data.icon_path;
+                document.getElementById('server-name').textContent = data.server_name;
+            } catch (error) {
+                console.error('Error fetching server info:', error);
+            }
+        }
+
+        function decodeHTMLEntities(text) {
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = text;
+            return textarea.value;
+        }
+
+        function parseBBCodeToHTML(text) {
+            return text.replace(/\[i\](.*?)\[\/i\]/gi, '<em>$1</em>');
+        }
+
+        /** Main Logic **/
+        document.addEventListener("DOMContentLoaded", async () => {
+            // Fetch user data for top bar
+            try {
+                const response = await fetch("/user", { method: "POST" });
+                if (!response.ok) throw new Error("Failed to fetch user data");
+                const data = await response.json();
+                const userName = document.getElementById("user-name");
+                userName.textContent = data.name;
+                userName.className = data.role.toLowerCase();
+                document.getElementById("profile-pic").src = data.profile_picture;
+                
+                document.querySelector('.logo').addEventListener('click', () => {
+                    window.location.href = '/';
+                });
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                window.location.href = "/login";
+            }
+            updateTitleAndFavicon();
+
+            // Parse media_id from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const mediaId = urlParams.get('media_id');
+            if (!mediaId) {
+                alert('No media ID provided');
+                return;
+            }
+
+            // Fetch media info
+            try {
+                const response = await fetch('/mediainfo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ media_id: parseInt(mediaId) })
+                });
+                if (!response.ok) throw new Error('Failed to fetch media info');
+                const data = await response.json();
+
+                // Populate title
+                document.getElementById('media-title').textContent = decodeHTMLEntities(data.title);
+
+                // Populate sidebar
+                const sidebar = document.querySelector('.sidebar');
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'media-stats'; // Add class for CSS
+                infoDiv.innerHTML = `
+                    <l class="stats">Creator: <strong>${data.creator}</strong></l> <br>
+                    <l class="stats">Web ID: <strong>${data.web_id}</strong></l> <br>
+                    <l class="stats">Media ID: <strong>${data.media_id}</strong></l> <br>
+                    <l class="stats">Score: <strong>${data.score}</strong></l> <br>
+                `;
+                sidebar.appendChild(infoDiv);
+
+                // Add a title for the tags
+                const tagsTitle = document.createElement('h3');
+                tagsTitle.textContent = 'Tags';
+                tagsTitle.className = 'tags-title';
+                sidebar.appendChild(tagsTitle);
+
+                // Tags
+                const tagsDiv = document.createElement('div');
+                tagsDiv.className = 'tags';
+                data.tags.forEach(tag => {
+                    const tagSpan = document.createElement('span');
+                    tagSpan.className = 'tag';
+                    tagSpan.textContent = tag;
+                    tagsDiv.appendChild(tagSpan);
+                });
+                sidebar.appendChild(tagsDiv);
+
+                // Display media based on type
+                const mediaDiv = document.getElementById('media');
+                const mediaType = getMediaType(data.path);
+                if (mediaType === 'image') {
+                    const img = document.createElement('img');
+                    img.src = data.path;
+                    img.alt = data.title;
+                    img.id = 'media-image'; // Add an ID to target it
+                    mediaDiv.appendChild(img);
+
+                    // Add click listener to toggle fullscreen
+                    img.addEventListener('click', () => {
+                        if (!document.fullscreenElement) {
+                            img.requestFullscreen().catch(err => {
+                                console.error(`Error attempting to enable fullscreen mode: ${err.message}`);
+                            });
+                        } else {
+                            document.exitFullscreen();
+                        }
+                    });
+                } else if (mediaType === 'video') {
+                    const video = document.createElement('video');
+                    video.src = data.path;
+                    video.controls = true;
+                    mediaDiv.appendChild(video);
+                } else if (mediaType === 'text') {
+                    const textDiv = document.createElement('div');
+                    textDiv.id = 'media-text';
+                    mediaDiv.appendChild(textDiv);
+                    fetch(data.path)
+                        .then(response => response.text())
+                        .then(text => {
+                            const parsedText = parseBBCodeToHTML(text);
+                            textDiv.innerHTML = parsedText; // use innerHTML here since we're injecting HTML
+                        })
+                        .catch(error => {
+                            textDiv.textContent = 'Failed to load text content';
+                            console.error('Error fetching text:', error);
+                        });
+                } else if (mediaType === 'pdf') {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = data.path;
+                    mediaDiv.appendChild(iframe);
+                } else {
+                    mediaDiv.textContent = 'Unsupported media type';
+                }
+
+                // Fetch and display description
+                const descriptionDiv = document.getElementById('description');
+                fetch(data.description_path)
+                    .then(response => response.text())
+                    .then(html => {
+                        descriptionDiv.innerHTML = html;
+                    })
+                    .catch(error => {
+                        descriptionDiv.textContent = 'Failed to load description';
+                        console.error('Error fetching description:', error);
+                    });
+
+                // Set download link
+                const downloadLink = document.getElementById('download-link');
+                downloadLink.href = data.path;
+                const ext = data.path.split('.').pop();
+                downloadLink.download = `${data.title}.${ext}`;
+            } catch (error) {
+                console.error('Error fetching media info:', error);
+                alert('Failed to load media');
+            }
+        });
+
+        /** Determine Media Type **/
+        function getMediaType(path) {
+            const ext = path.split('.').pop().toLowerCase();
+            if (['png', 'jpg', 'jpeg', 'gif', 'bmp'].includes(ext)) return 'image';
+            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video';
+            if (ext === 'txt') return 'text';
+            if (ext === 'pdf') return 'pdf';
+            return 'unknown';
+        }
+
+        /** User Interaction Functions **/
+        function logout() {
+            fetch("/logout", { method: "POST" })
+                .then(() => window.location.href = "/login")
+                .catch(error => console.error("Error logging out:", error));
+        }
+
+        function goToProfile() {
+            window.location.href = "/profile";
+        }
+    </script>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <img id="logo" alt="Server Logo">
+            <span id="server-name"></span>
+        </div>
+        <div class="user-info">
+            <span id="user-name"></span>
+            <img id="profile-pic" alt="Profile Picture" onclick="goToProfile()">
+            <button onclick="logout()">
+                <img id="logout-pic" src="/resources/logout.png" alt="Logout">
+            </button>
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="sidebar">
+            <!-- Creator Web ID, Media ID, Score, and Tags will be inserted here -->
+        </div>
+        <div class="media-container">
+            <div id="media"></div>
+            <h2 id="media-title"></h2>
+            <a id="download-link">Download</a>
+            <div id="description" class="description"></div>
+        </div>
+    </div>
+    <footer class="footer">
+        <p>© nelo-dev 2025</p>
+    </footer>
+</body>
+</html>
