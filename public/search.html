@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" id="favicon">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Search</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      background-color: #0e0e0e;
+      color: #f0f0f0;
+      background-image: url('/resources/hexagon.png');
+      background-repeat: repeat;
+      background-size: 74px 44px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .top-bar {
+      top: 0;
+      width: 100%;
+      background-color: #1a1a1a;
+      padding: 10px 20px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+      z-index: 100;
+    }
+    .top-bar .logo {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .top-bar .logo img {
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+    }
+    .top-bar .logo span {
+      font-size: 18px;
+    }
+    .top-bar .user-info {
+      display: flex;
+      align-items: center;
+    }
+    .top-bar .user-info span {
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    .top-bar .user-info img#profile-pic {
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      transition: transform 0.6s ease-in-out;
+    }
+    .top-bar .user-info img#profile-pic:hover {
+      animation: pulse 1s infinite;
+    }
+    .top-bar .user-info button {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .top-bar .user-info button img#logout-pic {
+      width: 32px;
+      height: 32px;
+    }
+    .visitor { color: #f0f0f0; }
+    .moderator { color: #5555ff; }
+    .admin { color: #ffaa00; }
+    .content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      margin-top: 0;
+      padding-top: 0px;
+    }
+    .search-sidebar {
+      padding: 15px;
+      width: 280px;
+      box-sizing: border-box;
+      background-color: transparent;
+      border-right: none;
+      background-color: #0a0a0a9a;
+      border-right: 1px solid #333;
+      border-bottom: 1px solid #333;
+    }
+    .search-sidebar h2 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+    /* Wrap the input in a relative container */
+    .autocomplete-container {
+      position: relative;
+    }
+    .search-sidebar input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      background-color: #2a2a2a;
+      border: 1px solid #444;
+      color: #f0f0f0;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+    /* Dropdown for autocomplete */
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background-color: #2a2a2a;
+      border: 1px solid #444;
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 200;
+      display: none;
+    }
+    .autocomplete-item {
+      padding: 8px;
+      cursor: pointer;
+    }
+    .autocomplete-item:hover {
+      background-color: #5555ff;
+    }
+    .checkbox-group {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .checkbox-group input[type="radio"] {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #5555ff;
+      background-color: #2a2a2a;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s, border 0.3s;
+    }
+    .checkbox-group input[type="radio"]:checked {
+      background-color: #5555ff;
+    }
+    .checkbox-group input[type="radio"]::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: white;
+      border-radius: 2px;
+      transform: scale(0);
+      transition: transform 0.2s ease-in-out;
+    }
+    .checkbox-group input[type="radio"]:checked::before {
+      transform: scale(1);
+    }
+    .search-sidebar button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px;
+      background-color: #5555ff;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .search-results {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .pagination {
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pagination a {
+      color: #5555ff;
+      text-decoration: none;
+      padding: 5px 10px;
+      border: 1px solid #5555ff;
+      border-radius: 3px;
+    }
+    .pagination a.active {
+      background-color: #5555ff;
+      color: #fff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    .grid-item {
+      text-align: center;
+      background: none;
+      border: none;
+    }
+    .grid-item img {
+      width: 100%;
+      height: auto;
+      display: block;
+      max-height: 128px;
+      object-fit: contain;
+    }
+    .grid-item h3 {
+      font-size: 14px;
+      margin: 8px 0 2px;
+    }
+    .grid-item p.creator {
+      font-size: 12px;
+      margin: 0;
+      color: #aaa;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    @media (max-width: 512px) {
+      .content {
+        flex-direction: column;
+      }
+      .search-sidebar {
+        width: 100%;
+        border-bottom: 1px solid #333;
+        border-right: 0px solid #333;
+      }
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .footer {
+      text-align: center;
+      color: #f0f0f0;
+    }
+  </style>
+  <script>
+    // Helper to get URL parameters
+    function getQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        tags: params.get('tags') || '',
+        search_type: params.get('search_type') || 'tags',
+        sort: params.get('sort') || 'score',
+        order: params.get('order') || 'desc',
+        offset: parseInt(params.get('offset')) || 0
+      };
+    }
+
+    function updateUrl(params) {
+      const query = new URLSearchParams(params).toString();
+      window.location.search = query;
+    }
+
+    async function executeSearch() {
+      const params = getQueryParams();
+      let tagsArray = [];
+      let title = "";
+      if (params.search_type === "tags") {
+        if (params.tags.trim() !== "") {
+          tagsArray = params.tags.trim().split(/\s+/);
+        }
+      } else {
+        title = params.tags.trim();
+      }
+      const payload = {
+        tags: tagsArray,
+        title: title,
+        search_type: params.search_type,
+        sort: params.sort,
+        order: params.order,
+        limit: 48,
+        offset: params.offset
+      };
+      try {
+        const response = await fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error("Search request failed");
+        const results = await response.json();
+        displayResults(results);
+      } catch (error) {
+        console.error("Error during search:", error);
+      }
+    }
+
+    function displayResults(results) {
+      const grid = document.getElementById("results-grid");
+      grid.innerHTML = "";
+      if (results.length === 0) {
+        grid.innerHTML = "<p>No results found.</p>";
+        return;
+      }
+      results.forEach(item => {
+        const gridItem = document.createElement("div");
+        gridItem.className = "grid-item";
+        gridItem.innerHTML = `
+          <img src="${item.preview_path}" alt="${item.title}">
+          <h3>${item.title}</h3>
+          <p class="creator">by ${item.creator || "Unknown"}</p>
+        `;
+        grid.appendChild(gridItem);
+      });
+    }
+
+    function buildPagination() {
+      const params = getQueryParams();
+      const limit = 48;
+      const currentPage = Math.floor(params.offset / limit) + 1;
+      const paginationDiv = document.getElementById("pagination");
+      paginationDiv.innerHTML = "";
+      if (currentPage > 1) {
+        const firstLink = document.createElement("a");
+        firstLink.href = buildUrlWithOffset(0);
+        firstLink.textContent = "First";
+        paginationDiv.appendChild(firstLink);
+      }
+      for (let i = currentPage - 2; i < currentPage; i++) {
+        if (i > 0) {
+          const pageLink = document.createElement("a");
+          pageLink.href = buildUrlWithOffset((i - 1) * limit);
+          pageLink.textContent = i;
+          paginationDiv.appendChild(pageLink);
+        }
+      }
+      const currentLink = document.createElement("a");
+      currentLink.href = "#";
+      currentLink.textContent = currentPage;
+      currentLink.className = "active";
+      paginationDiv.appendChild(currentLink);
+      for (let i = currentPage + 1; i <= currentPage + 2; i++) {
+        const pageLink = document.createElement("a");
+        pageLink.href = buildUrlWithOffset((i - 1) * limit);
+        pageLink.textContent = i;
+        paginationDiv.appendChild(pageLink);
+      }
+    }
+
+    function buildUrlWithOffset(newOffset) {
+      const params = getQueryParams();
+      params.offset = newOffset;
+      return '?' + new URLSearchParams(params).toString();
+    }
+
+    function handleSearch(e) {
+      e.preventDefault();
+      const tags = document.getElementById("search-input").value.trim();
+      const searchType = document.querySelector('input[name="search-type"]:checked')?.value || "tags";
+      const sortBy = document.querySelector('input[name="sort-by"]:checked')?.value || "score";
+      const order = document.querySelector('input[name="order"]:checked')?.value || "desc";
+      const params = new URLSearchParams({ tags, search_type: searchType, sort: sortBy, order, offset: 0 }).toString();
+      window.location.search = params;
+    }
+
+    async function fetchTagSuggestions(partialTag) {
+      try {
+        const response = await fetch('/autotag', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag: partialTag })
+        });
+        if (!response.ok) throw new Error("Autocomplete request failed");
+        return (await response.json()).tags;
+      } catch (error) {
+        console.error("Error fetching tag suggestions:", error);
+        return [];
+      }
+    }
+
+    async function handleAutocomplete() {
+      const input = document.getElementById("search-input");
+      const dropdown = document.getElementById("autocomplete-dropdown");
+      const tagsText = input.value;
+      const parts = tagsText.split(/\s+/);
+      const currentPartial = parts.pop();
+      // Only trigger autocomplete when the current fragment is 2 or more characters
+      if (currentPartial.trim().length < 2) {
+        dropdown.innerHTML = "";
+        dropdown.style.display = "none";
+        return;
+      }
+      const suggestions = await fetchTagSuggestions(currentPartial);
+      if (suggestions.length === 0) {
+        dropdown.innerHTML = "";
+        dropdown.style.display = "none";
+        return;
+      }
+      dropdown.innerHTML = "";
+      suggestions.forEach(suggestion => {
+        const item = document.createElement("div");
+        item.className = "autocomplete-item";
+        item.textContent = `${suggestion.tag} (${suggestion.count})`;
+        item.onclick = () => {
+          parts.push(suggestion.tag);
+          input.value = parts.join(" ") + " ";
+          dropdown.innerHTML = "";
+          dropdown.style.display = "none";
+        };
+        dropdown.appendChild(item);
+      });
+      dropdown.style.display = "block";
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const response = await fetch("/user", { method: "POST" });
+        if (!response.ok) throw new Error("Failed to fetch user data");
+        const data = await response.json();
+        document.getElementById("user-name").textContent = data.name;
+        document.getElementById("user-name").className = data.role.toLowerCase();
+        document.getElementById("profile-pic").src = data.profile_picture;
+        document.querySelector('.logo').addEventListener('click', () => {
+          window.location.href = '/';
+        });
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        window.location.href = "/login";
+      }
+      updateTitleAndFavicon();
+      const params = new URLSearchParams(window.location.search);
+      document.getElementById("search-input").value = params.get("tags") || "";
+      document.querySelector(`input[name="search-type"][value="${params.get("search_type") || "tags"}"]`).checked = true;
+      document.querySelector(`input[name="sort-by"][value="${params.get("sort") || "score"}"]`).checked = true;
+      document.querySelector(`input[name="order"][value="${params.get("order") || "desc"}"]`).checked = true;
+      buildPagination();
+      executeSearch();
+      const input = document.getElementById("search-input");
+      input.addEventListener("input", handleAutocomplete);
+      // Create and append dropdown container within the autocomplete container
+      const container = document.querySelector(".autocomplete-container");
+      const dropdown = document.createElement("div");
+      dropdown.id = "autocomplete-dropdown";
+      dropdown.className = "autocomplete-dropdown";
+      container.appendChild(dropdown);
+    });
+
+    async function updateTitleAndFavicon() {
+      try {
+        const response = await fetch('/info', { method: 'POST' });
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        document.getElementById('favicon').href = data.icon_path;
+        document.getElementById('logo').src = data.icon_path;
+        document.getElementById('server-name').textContent = data.server_name;
+      } catch (error) {
+        console.error('There was a problem with the fetch operation:', error);
+      }
+    }
+
+    function logout() {
+      fetch("/logout", { method: "POST" })
+          .then(() => window.location.href = "/login")
+          .catch(error => console.error("Error logging out:", error));
+    }
+
+    function goToProfile() {
+      window.location.href = "/profile";
+    }
+  </script>
+</head>
+<body>
+  <div class="top-bar">
+    <div class="logo">
+      <img id="logo" alt="Server Logo">
+      <span id="server-name"></span>
+    </div>
+    <div class="user-info">
+      <span id="user-name"></span>
+      <img id="profile-pic" alt="Profile Picture" onclick="goToProfile()">
+      <button onclick="logout()">
+        <img id="logout-pic" src="/resources/logout.png" alt="Logout">
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="search-sidebar">
+      <h2>Search Media</h2>
+      <form id="search-form" onsubmit="handleSearch(event)">
+        <!-- Wrap the input in a container for autocomplete -->
+        <div class="autocomplete-container">
+          <input type="text" id="search-input" placeholder="Enter tags or title">
+        </div>
+        <label>Search Type</label>
+        <div class="checkbox-group">
+          <label><input type="radio" name="search-type" value="tags"> Tags</label>
+          <label><input type="radio" name="search-type" value="title"> Title</label>
+        </div>
+        <label>Sort By</label>
+        <div class="checkbox-group">
+          <label><input type="radio" name="sort-by" value="score"> Score</label>
+          <label><input type="radio" name="sort-by" value="media_id"> Media</label>
+          <label><input type="radio" name="sort-by" value="web_id"> Web ID</label>
+        </div>
+        <label>Order</label>
+        <div class="checkbox-group">
+          <label><input type="radio" name="order" value="desc"> Desc.</label>
+          <label><input type="radio" name="order" value="asc"> Asc.</label>
+        </div>
+        <button type="submit">Search</button>
+      </form>
+    </div>
+
+    <div class="search-results">
+      <div id="pagination" class="pagination"></div>
+      <div id="results-grid" class="grid"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>© nelo-dev 2025</p>
+  </footer>
+</body>
+</html>

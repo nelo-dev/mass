@@ -23,14 +23,14 @@ void init_config()
     add_comment(CFG_PATH, "Managed Archival Storage Server (M.A.S.S) configuration file. Changes require restart!");
     add_comment(CFG_PATH, "Server port:");
     add_param(CFG_PATH, "port", "8080");
-    add_comment(CFG_PATH, "Database file-path:");
-    add_param(CFG_PATH, "db_path", "data/db/mass.db");
-    add_comment(CFG_PATH, "Size of database cache in MegaByte (greatly improves speed on large archives):");
-    add_param(CFG_PATH, "db_cache", "512");
     add_comment(CFG_PATH, "SSL key path (optional)");
     add_param(CFG_PATH, "ssl_key", "");
     add_comment(CFG_PATH, "SSL certificate path (optional)");
     add_param(CFG_PATH, "ssl_crt", "");
+    add_comment(CFG_PATH, "Database file-path:");
+    add_param(CFG_PATH, "db_path", "data/db/mass.db");
+    add_comment(CFG_PATH, "Size of database cache in MegaByte (greatly improves speed on large archives):");
+    add_param(CFG_PATH, "db_cache", "512");
     add_comment(CFG_PATH, "Server Name");
     add_param(CFG_PATH, "server_name", "mass");
     add_comment(CFG_PATH, "Server Icon (must be placed in folder public/resources)");

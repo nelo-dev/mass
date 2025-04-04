@@ -101,6 +101,8 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);",
         "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);",
         "CREATE INDEX IF NOT EXISTS idx_user_approved ON user(approved);"
+        "CREATE INDEX IF NOT EXISTS idx_media_title ON media(title);"
+        "CREATE INDEX idx_tag_trgm ON tags USING GIN (tag_name gin_trgm_ops);"
     };
 
     // Default role insertion queries
@@ -1120,11 +1122,11 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     const char* media_ext = get_extension(dl_url);
     const char* preview_ext = get_extension(preview_url);
 
-    // Construct file paths
+    // Construct subdir
     char subdir[6]; // "/ab/cd"
     sprintf(subdir, "/%c%c/%c%c", base32_str[0], base32_str[1], base32_str[2], base32_str[3]);
 
-    // Media path
+    // Construct full paths for downloading
     char* media_dir_path = malloc(strlen(media_dir) + 6 + 1);
     char* media_path = malloc(strlen(media_dir) + 6 + 1 + 6 + 1 + strlen(media_ext) + 1);
     if (!media_dir_path || !media_path) {
@@ -1137,7 +1139,6 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     sprintf(media_path, "%s/%s.%s", media_dir_path, base32_str, media_ext);
     folder_create(media_dir_path);
 
-    // Preview path
     char* preview_dir_path = malloc(strlen(preview_dir) + 6 + 1);
     char* preview_path = malloc(strlen(preview_dir) + 6 + 1 + 6 + 1 + strlen(preview_ext) + 1);
     if (!preview_dir_path || !preview_path) {
@@ -1151,7 +1152,6 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     sprintf(preview_path, "%s/%s.%s", preview_dir_path, base32_str, preview_ext);
     folder_create(preview_dir_path);
 
-    // Description path
     char* desc_dir_path = malloc(strlen(description_dir) + 6 + 1);
     char* desc_path = malloc(strlen(description_dir) + 6 + 1 + 6 + 5); // ".html"
     if (!desc_dir_path || !desc_path) {
@@ -1165,36 +1165,55 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     sprintf(desc_path, "%s/%s.html", desc_dir_path, base32_str);
     folder_create(desc_dir_path);
 
-    // Download media and preview, save description
+    // Construct relative paths for database storage
+    char* relative_media_path = malloc(6 + strlen(subdir) + 1 + strlen(base32_str) + 1 + strlen(media_ext) + 1);
+    char* relative_preview_path = malloc(8 + strlen(subdir) + 1 + strlen(base32_str) + 1 + strlen(preview_ext) + 1);
+    char* relative_desc_path = malloc(12 + strlen(subdir) + 1 + strlen(base32_str) + 5); // "description" + subdir + "/" + base32_str + ".html"
+    if (!relative_media_path || !relative_preview_path || !relative_desc_path) {
+        free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
+        free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
+        json_decref(root);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        return error_json("Memory allocation failed");
+    }
+    sprintf(relative_media_path, "media%s/%s.%s", subdir, base32_str, media_ext);
+    sprintf(relative_preview_path, "preview%s/%s.%s", subdir, base32_str, preview_ext);
+    sprintf(relative_desc_path, "description%s/%s.html", subdir, base32_str);
+
+    // Download media and preview, save description using full paths
     downloader_add(dl, dl_url, media_path);
     downloader_add(dl, preview_url, preview_path);
     if (file_write(desc_path, description, strlen(description)) != 0) {
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
         json_decref(root);
         sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
         return error_json("Failed to write description file");
     }
 
-    // Update media with actual paths
+    // Update media with relative paths in the database
     const char* update_sql = "UPDATE media SET path=?, preview_path=?, description_path=? WHERE media_id=?";
     rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
         json_decref(root);
         sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
         return error_json("Database error during path update");
     }
-    sqlite3_bind_text(stmt, 1, media_path, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, preview_path, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, desc_path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, relative_media_path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, relative_preview_path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, relative_desc_path, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 4, media_id);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
         sqlite3_finalize(stmt);
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
         json_decref(root);
         sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
         return error_json("Failed to update media paths");
@@ -1238,6 +1257,7 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     if (rc != SQLITE_OK) {
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
+        free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
         json_decref(root);
         return error_json("Failed to commit transaction");
     }
@@ -1251,7 +1271,260 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     free(preview_path);
     free(desc_dir_path);
     free(desc_path);
+    free(relative_media_path);
+    free(relative_preview_path);
+    free(relative_desc_path);
     json_decref(root);
 
     return success_json();
+}
+
+// Helper function to create error JSON
+static char* create_error_json(const char* message) {
+    json_t* error_obj = json_object();
+    json_object_set_new(error_obj, "error", json_string(message));
+    char* error_str = json_dumps(error_obj, JSON_COMPACT);
+    json_decref(error_obj);
+    return error_str;
+}
+
+char* search_media(sqlite3* db, const char* json_input) {
+    // Parse JSON input
+    json_t *root;
+    json_error_t error;
+    root = json_loads(json_input, 0, &error);
+    if (!root) {
+        return create_error_json("JSON parse error");
+    }
+    if (!json_is_object(root)) {
+        json_decref(root);
+        return create_error_json("Input must be a JSON object");
+    }
+
+    // Extract JSON fields
+    json_t *tags = json_object_get(root, "tags");
+    json_t *title = json_object_get(root, "title");
+    json_t *search_type = json_object_get(root, "search_type");
+    json_t *sort = json_object_get(root, "sort");
+    json_t *order = json_object_get(root, "order");
+    json_t *limit_json = json_object_get(root, "limit");
+    json_t *offset_json = json_object_get(root, "offset");
+
+    // Validate required fields
+    if (!json_is_array(tags) || !json_is_string(title) || !json_is_string(search_type) ||
+        !json_is_string(sort) || !json_is_string(order) || !json_is_integer(limit_json)) {
+        json_decref(root);
+        return create_error_json("Missing or invalid required fields");
+    }
+
+    // Extract and validate limit
+    int limit_val = json_integer_value(limit_json);
+    if (limit_val < 1 || limit_val > 128) {
+        json_decref(root);
+        return create_error_json("Limit must be between 1 and 128");
+    }
+
+    // Extract and validate offset
+    int offset_val = 0;
+    if (offset_json != NULL) {
+        if (!json_is_integer(offset_json)) {
+            json_decref(root);
+            return create_error_json("Offset must be an integer");
+        }
+        offset_val = json_integer_value(offset_json);
+        if (offset_val < 0) {
+            json_decref(root);
+            return create_error_json("Offset must be non-negative");
+        }
+    }
+
+    // Extract other fields
+    const char *search_type_str = json_string_value(search_type);
+    const char *sort_str = json_string_value(sort);
+    const char *order_str = json_string_value(order);
+    const char *order_by = (strcmp(sort_str, "media_id") == 0) ? "m.media_id" :
+                           (strcmp(sort_str, "score") == 0) ? "m.score" : "m.web_id";
+    const char *order_dir = (strcmp(order_str, "asc") == 0) ? "ASC" : "DESC";
+
+    // Prepare SQL query
+    char *sql = NULL;
+    sqlite3_stmt *stmt = NULL;
+
+    if (strcmp(search_type_str, "tags") == 0) {
+        size_t num_tags = json_array_size(tags);
+        if (num_tags > 0) {
+            // Validate tags are strings
+            for (size_t i = 0; i < num_tags; i++) {
+                if (!json_is_string(json_array_get(tags, i))) {
+                    json_decref(root);
+                    return create_error_json("Tags must be strings");
+                }
+            }
+            // Build IN clause for tags
+            char in_clause[2 * num_tags + 1];
+            strcpy(in_clause, "?");
+            for (size_t i = 1; i < num_tags; i++) {
+                strcat(in_clause, ",?");
+            }
+            sql = sqlite3_mprintf(
+                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                "FROM media m "
+                "JOIN media_tags mt ON m.media_id = mt.media_id "
+                "JOIN tags t ON mt.tag_id = t.tag_id "
+                "WHERE t.tag_name IN (%s) "
+                "GROUP BY m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                "HAVING COUNT(DISTINCT t.tag_id) = %d "
+                "ORDER BY %s %s LIMIT %d OFFSET %d",
+                in_clause, num_tags, order_by, order_dir, limit_val, offset_val
+            );
+        } else {
+            // No tags: return all media
+            sql = sqlite3_mprintf(
+                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                "FROM media m "
+                "ORDER BY %s %s LIMIT %d OFFSET %d",
+                order_by, order_dir, limit_val, offset_val
+            );
+        }
+    } else if (strcmp(search_type_str, "title") == 0) {
+        const char *title_str = json_string_value(title);
+        if (strlen(title_str) > 0) {
+            sql = sqlite3_mprintf(
+                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                "FROM media m "
+                "WHERE m.title LIKE ? "
+                "ORDER BY %s %s LIMIT %d OFFSET %d",
+                order_by, order_dir, limit_val, offset_val
+            );
+        } else {
+            // No title: return all media
+            sql = sqlite3_mprintf(
+                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                "FROM media m "
+                "ORDER BY %s %s LIMIT %d OFFSET %d",
+                order_by, order_dir, limit_val, offset_val
+            );
+        }
+    } else {
+        json_decref(root);
+        return create_error_json("Invalid search_type");
+    }
+
+    if (!sql) {
+        json_decref(root);
+        return create_error_json("SQL query construction failed");
+    }
+
+    // Prepare and bind SQL statement
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        sqlite3_free(sql);
+        json_decref(root);
+        return create_error_json("SQL preparation failed");
+    }
+    sqlite3_free(sql);
+
+    if (strcmp(search_type_str, "tags") == 0 && json_array_size(tags) > 0) {
+        for (size_t i = 0; i < json_array_size(tags); i++) {
+            const char *tag = json_string_value(json_array_get(tags, i));
+            sqlite3_bind_text(stmt, i + 1, tag, -1, SQLITE_STATIC);
+        }
+    } else if (strcmp(search_type_str, "title") == 0 && strlen(json_string_value(title)) > 0) {
+        char *like_str = sqlite3_mprintf("%%%s%%", json_string_value(title));
+        sqlite3_bind_text(stmt, 1, like_str, -1, SQLITE_TRANSIENT);
+        sqlite3_free(like_str);
+    }
+
+    // Execute query and build JSON result
+    json_t *results = json_array();
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json_t *media = json_object();
+        json_object_set_new(media, "media_id", json_integer(sqlite3_column_int(stmt, 0)));
+        json_object_set_new(media, "title", json_string((const char*)sqlite3_column_text(stmt, 1)));
+        json_object_set_new(media, "score", json_integer(sqlite3_column_int(stmt, 2)));
+        json_object_set_new(media, "web_id", json_integer(sqlite3_column_int(stmt, 3)));
+        json_object_set_new(media, "preview_path", json_string((const char*)sqlite3_column_text(stmt, 4)));
+        json_object_set_new(media, "path", json_string((const char*)sqlite3_column_text(stmt, 5)));
+        json_object_set_new(media, "creator", json_string((const char*)sqlite3_column_text(stmt, 6)));
+        json_array_append_new(results, media);
+    }
+
+    sqlite3_finalize(stmt);
+
+    char *result_str = json_dumps(results, JSON_COMPACT);
+    json_decref(results);
+    json_decref(root);
+
+    if (!result_str) {
+        return create_error_json("JSON serialization failed");
+    }
+
+    return result_str;
+}
+
+char* autocomplete_tags(sqlite3 *db, const char *json_input) {
+    json_t *root = NULL;
+    json_error_t error;
+    char *result_json = NULL;
+    sqlite3_stmt *stmt = NULL;
+    
+    // Parse input JSON
+    root = json_loads(json_input, 0, &error);
+    if (!root) {
+        return json_dumps(json_pack("{s:s}", "error", "Invalid JSON input"), JSON_COMPACT);
+    }
+
+    const char *tag_partial = json_string_value(json_object_get(root, "tag"));
+    if (!tag_partial) {
+        json_decref(root);
+        return json_dumps(json_pack("{s:s}", "error", "Missing 'tag' field"), JSON_COMPACT);
+    }
+
+    // Prepare SQL query with LIKE and count optimization
+    const char *sql = 
+        "SELECT t.tag_name, COUNT(mt.media_id) as occurrence "
+        "FROM tags t "
+        "LEFT JOIN media_tags mt ON t.tag_id = mt.tag_id "
+        "WHERE t.tag_name LIKE ?1 "
+        "GROUP BY t.tag_name, t.tag_id "
+        "ORDER BY occurrence DESC "
+        "LIMIT 10";
+
+    // Use prepared statement for better performance
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        json_decref(root);
+        return json_dumps(json_pack("{s:s}", "error", sqlite3_errmsg(db)), JSON_COMPACT);
+    }
+
+    // Create search pattern (e.g., "tag%" for prefix matching)
+    char *pattern = sqlite3_mprintf("%s%%", tag_partial);
+    sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_STATIC);
+
+    // Create JSON array for results
+    json_t *results = json_array();
+
+    // Fetch results
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *tag_name = (const char *)sqlite3_column_text(stmt, 0);
+        int occurrence = sqlite3_column_int(stmt, 1);
+
+        json_t *tag_obj = json_pack("{s:s, s:i}", 
+            "tag", tag_name,
+            "count", occurrence
+        );
+        json_array_append_new(results, tag_obj);
+    }
+
+    // Clean up SQLite resources
+    sqlite3_free(pattern);
+    sqlite3_finalize(stmt);
+
+    // Create final JSON object
+    json_t *output = json_pack("{s:o}", "tags", results);
+    result_json = json_dumps(output, JSON_COMPACT);
+
+    // Clean up JSON resources
+    json_decref(root);
+    json_decref(output);
+
+    return result_json ? result_json : json_dumps(json_pack("{s:s}", "error", "Failed to generate response"), JSON_COMPACT);
 }

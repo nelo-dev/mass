@@ -300,6 +300,22 @@ static int handle_upload(struct MHD_Connection *connection, RequestData *req_dat
     return ret;
 }
 
+static int handle_search(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = search_media(app->db, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
+static int handle_autotag(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = autocomplete_tags(app->db, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -335,6 +351,11 @@ static int handle_get_api(struct MHD_Connection *connection, RequestData *req_da
     return serve_file(connection, "public/api.html");
 }
 
+static int handle_get_search(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/search.html");
+}
+
 /* ------------------------------------------------------------------
    NEW STATIC HANDLER: Serve all files under public/res/
    ------------------------------------------------------------------ */
@@ -362,6 +383,48 @@ static int handle_static_profile(struct MHD_Connection *connection, RequestData 
         snprintf(filepath, sizeof(filepath), "public/404.html");
     } else {
         snprintf(filepath, sizeof(filepath), "%s/%s", app->profile_path, relative_path);
+    }
+    return serve_file(connection, filepath);
+}
+
+static int handle_static_media(struct MHD_Connection *connection, RequestData *req_data, App app, const char *full_url) {
+    (void)req_data; (void)app;
+    const char *prefix = "/media/";
+    const char *relative_path = full_url + strlen(prefix);
+    char filepath[512];
+    // If no specific file is requested, serve an index file
+    if (strlen(relative_path) == 0) {
+        snprintf(filepath, sizeof(filepath), "public/404.html");
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s/%s", app->media_path, relative_path);
+    }
+    return serve_file(connection, filepath);
+}
+
+static int handle_static_preview(struct MHD_Connection *connection, RequestData *req_data, App app, const char *full_url) {
+    (void)req_data; (void)app;
+    const char *prefix = "/preview/";
+    const char *relative_path = full_url + strlen(prefix);
+    char filepath[512];
+    // If no specific file is requested, serve an index file
+    if (strlen(relative_path) == 0) {
+        snprintf(filepath, sizeof(filepath), "public/404.html");
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s/%s", app->preview_path, relative_path);
+    }
+    return serve_file(connection, filepath);
+}
+
+static int handle_static_description(struct MHD_Connection *connection, RequestData *req_data, App app, const char *full_url) {
+    (void)req_data; (void)app;
+    const char *prefix = "/description/";
+    const char *relative_path = full_url + strlen(prefix);
+    char filepath[512];
+    // If no specific file is requested, serve an index file
+    if (strlen(relative_path) == 0) {
+        snprintf(filepath, sizeof(filepath), "public/404.html");
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s/%s", app->description_path, relative_path);
     }
     return serve_file(connection, filepath);
 }
@@ -395,6 +458,8 @@ static const Route route_table[] = {
     {"POST", "/deletekey", handle_delete_api_key, true, 3, false},
     {"POST", "/keys", handle_get_api_keys, true, 3, false},
     {"POST", "/upload", handle_upload, false, -1, false},
+    {"POST", "/search", handle_search, true, 1, false},
+    {"POST", "/autotag", handle_autotag, true, 1, false},
 
     /* GET routes */
     {"GET", "/register", handle_get_register, false, -1, false},
@@ -404,10 +469,15 @@ static const Route route_table[] = {
     {"GET", "/unapproved", handle_get_unapproved, true, 0, false},
     {"GET", "/management", handle_get_management, true, 2, false},
     {"GET", "/api", handle_get_api, true, 3, false},
+    {"GET", "/search", handle_get_search, true, 1, false},
 
     /* Static file routes */
     {"GET", "/resources/", handle_static_res, false, -1, true},
-    {"GET", "/profile/", handle_static_profile, false, -1, true}};
+    {"GET", "/profile/", handle_static_profile, false, -1, true},
+    {"GET", "/media/", handle_static_media, false, -1, true},
+    {"GET", "/preview/", handle_static_preview, false, -1, true},
+    {"GET", "/description/", handle_static_description, false, -1, true}
+};
 
 static const Route *find_route(const char *method, const char *url) {
     for (size_t i = 0; i < sizeof(route_table)/sizeof(route_table[0]); i++) {

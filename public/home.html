@@ -89,6 +89,37 @@
             margin: 0;
             font-size: 24px;
         }
+        /* Autocomplete container and dropdown styles */
+        .autocomplete-container {
+            position: relative;
+        }
+        .autocomplete-container input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            background-color: #2a2a2a;
+            border: 1px solid #444;
+            color: #f0f0f0;
+            box-sizing: border-box;
+        }
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: #2a2a2a;
+            border: 1px solid #444;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            display: none;
+        }
+        .autocomplete-item {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .autocomplete-item:hover {
+            background-color: #5555ff;
+        }
         .admin-section hr {
             border: none;
             height: 1px;
@@ -129,7 +160,6 @@
                 margin: 10px;
             }
         }
-
         .footer {
             position: fixed;
             bottom: 0;
@@ -153,6 +183,55 @@
             }
         }
 
+        async function fetchTagSuggestions(partialTag) {
+            try {
+                const response = await fetch('/autotag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag: partialTag })
+                });
+                if (!response.ok) throw new Error("Autocomplete request failed");
+                return (await response.json()).tags;
+            } catch (error) {
+                console.error("Error fetching tag suggestions:", error);
+                return [];
+            }
+        }
+
+        async function handleAutocomplete(e) {
+            const input = e.target;
+            const container = input.parentNode;
+            const dropdown = container.querySelector("#autocomplete-dropdown");
+            const tagsText = input.value;
+            const parts = tagsText.split(/\s+/);
+            const currentPartial = parts.pop();
+            if (currentPartial.trim().length < 2) {
+                dropdown.innerHTML = "";
+                dropdown.style.display = "none";
+                return;
+            }
+            const suggestions = await fetchTagSuggestions(currentPartial);
+            if (suggestions.length === 0) {
+                dropdown.innerHTML = "";
+                dropdown.style.display = "none";
+                return;
+            }
+            dropdown.innerHTML = "";
+            suggestions.forEach(suggestion => {
+                const item = document.createElement("div");
+                item.className = "autocomplete-item";
+                item.textContent = `${suggestion.tag} (${suggestion.count})`;
+                item.onclick = () => {
+                    parts.push(suggestion.tag);
+                    input.value = parts.join(" ") + " ";
+                    dropdown.innerHTML = "";
+                    dropdown.style.display = "none";
+                };
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = "block";
+        }
+
         document.addEventListener("DOMContentLoaded", async () => {
             try {
                 const response = await fetch("/user", { method: "POST" });
@@ -161,9 +240,7 @@
                 const userName = document.getElementById("user-name");
                 userName.textContent = data.name;
                 userName.className = data.role.toLowerCase();
-
                 document.getElementById("profile-pic").src = data.profile_picture;
-
                 const role = data.role.toLowerCase();
                 if (role === 'admin' || role === 'moderator') {
                     document.getElementById("admin-section").style.display = 'block';
@@ -172,7 +249,6 @@
                 if (role === 'admin') {
                     document.getElementById("api-button").style.display = 'flex';
                 }
-
                 document.querySelector('.logo').addEventListener('click', () => {
                     window.location.href = '/';
                 });
@@ -181,6 +257,17 @@
                 window.location.href = "/login";
             }
             updateTitleAndFavicon();
+
+            // Attach autocomplete handler for the search input
+            const searchInput = document.querySelector('input[name="tags"]');
+            searchInput.addEventListener("input", handleAutocomplete);
+            
+            // Create and append the autocomplete dropdown to the autocomplete container
+            const container = searchInput.parentNode;
+            const dropdown = document.createElement("div");
+            dropdown.id = "autocomplete-dropdown";
+            dropdown.className = "autocomplete-dropdown";
+            container.appendChild(dropdown);
         });
 
         function logout() {
@@ -210,6 +297,13 @@
     </div>
     <div class="search-container">
         <h1>Search</h1>
+        <form action="/search" method="get" style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+            <!-- Wrap the input in an autocomplete container -->
+            <div class="autocomplete-container">
+                <input type="text" name="tags" placeholder="Search by tags...">
+            </div>
+            <button type="submit" style="padding: 8px 16px; background-color: #5555ff; border: none; color: #fff; cursor: pointer; width: 100%;">Search</button>
+        </form>
         <div id="admin-section" class="admin-section" style="display: none;">
             <hr>
             <div id="button-container" class="button-container">
@@ -220,9 +314,8 @@
                     <img src="/resources/management.png" alt="Management Icon">Users
                 </button>
             </div>
-        </div>        
+        </div>
     </div>
-
     <footer class="footer">
         <p>© nelo-dev 2025</p>
     </footer>

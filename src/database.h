@@ -27,5 +27,7 @@ char* create_api_key(sqlite3 *db, const char *request_username, const char *json
 char* destroy_api_key(sqlite3 *db, const char *json_input);
 char* get_all_api_keys(sqlite3 *db);
 char* insert_media(sqlite3* db, Downloader* dl, const char* input_json, const char* media_dir, const char* preview_dir, const char* description_dir);
+char* search_media(sqlite3 *db, const char *input_json);
+char* autocomplete_tags(sqlite3 *db, const char *json_input);
 
 #endif
