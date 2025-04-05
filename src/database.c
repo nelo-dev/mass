@@ -1153,7 +1153,7 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     folder_create(preview_dir_path);
 
     char* desc_dir_path = malloc(strlen(description_dir) + 6 + 1);
-    char* desc_path = malloc(strlen(description_dir) + 6 + 1 + 6 + 5); // ".html"
+    char* desc_path = malloc(strlen(description_dir) + 6 + 1 + 6 + 5 + 1); // Adjusted for null terminator
     if (!desc_dir_path || !desc_path) {
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
@@ -1162,7 +1162,7 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
         return error_json("Memory allocation failed");
     }
     sprintf(desc_dir_path, "%s%s", description_dir, subdir);
-    sprintf(desc_path, "%s/%s.html", desc_dir_path, base32_str);
+    sprintf(desc_path, "%s/%s.html", desc_dir_path, base32_str); // Line 1165
     folder_create(desc_dir_path);
 
     // Construct relative paths for database storage
@@ -1184,7 +1184,7 @@ char* insert_media(sqlite3* db, Downloader* dl, const char* input_json,
     // Download media and preview, save description using full paths
     downloader_add(dl, dl_url, media_path);
     downloader_add(dl, preview_url, preview_path);
-    if (file_write(desc_path, description, strlen(description)) != 0) {
+    if (file_write(desc_path, description, strlen(description)) != 0) { //HERE 1187
         free(base32_str); free(temp_desc_path); free(media_dir_path); free(media_path);
         free(preview_dir_path); free(preview_path); free(desc_dir_path); free(desc_path);
         free(relative_media_path); free(relative_preview_path); free(relative_desc_path);
