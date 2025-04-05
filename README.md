@@ -40,7 +40,7 @@ A configuration file automatically in the executable directory **mass.cfg**. Fol
 ## API
 - With a **POST Request** to /upload a media can be uploaded to the archive server. An API Key is needed for that. And example request could look like this:
 
-```
+```json
 {
     "api_key": "RIHhttzPilZ",
     "dl_url": "https://example.com/media/example-picture.jpg",
@@ -52,4 +52,4 @@ A configuration file automatically in the executable directory **mass.cfg**. Fol
     "score": 1000,
     "tags": ["landscape", "forest", "sky", "sun"]
 }
-```json
+```
