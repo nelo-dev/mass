@@ -178,6 +178,12 @@
                 document.getElementById('favicon').href = data.icon_path;
                 document.getElementById('logo').src = data.icon_path;
                 document.getElementById('server-name').textContent = data.server_name;
+
+                // ✅ Update the media count
+                const countDisplay = document.getElementById('media-count');
+                if (data.media_count !== undefined) {
+                    countDisplay.textContent = `Serving ${data.media_count.toLocaleString()} Media Files`;
+                }
             } catch (error) {
                 console.error('There was a problem with the fetch operation:', error);
             }
@@ -297,7 +303,8 @@
     </div>
     <div class="search-container">
         <h1>Search</h1>
-        <form action="/search" method="get" style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+        <p id="media-count" style="margin: 5px 0 10px; font-size: 15px; color: #ccc;"></p>
+        <form action="/search" method="get" style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;" autocomplete="off">
             <!-- Wrap the input in an autocomplete container -->
             <div class="autocomplete-container">
                 <input type="text" name="tags" placeholder="Search by tags...">

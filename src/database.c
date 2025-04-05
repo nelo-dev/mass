@@ -1616,3 +1616,20 @@ char* get_media_info(sqlite3 *db, const char *json_input) {
     json_decref(media_json);
     return result;
 }
+
+int get_total_media_count(sqlite3 *db) {
+    const char *sql = "SELECT COUNT(*) FROM media;";
+    sqlite3_stmt *stmt;
+    int count = -1; // default to -1 to indicate an error if not set
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    } else {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    }
+
+    return count;
+}

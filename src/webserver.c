@@ -198,7 +198,7 @@ static int handle_info(struct MHD_Connection *connection, RequestData *req_data,
     (void)req_data; (void)url;
     if (!app) return MHD_NO;
     
-    json_t *json_response = json_pack("{s:s, s:s, s:i}", "server_name", app->server_name, "icon_path", app->icon_path, "max_profile_size", app->max_profile_size);
+    json_t *json_response = json_pack("{s:s, s:s, s:i, s:i}", "server_name", app->server_name, "icon_path", app->icon_path, "max_profile_size", app->max_profile_size, "media_count", get_total_media_count(app->db));
     if (!json_response) return MHD_NO;
     
     char *json_str = json_dumps(json_response, JSON_COMPACT);
