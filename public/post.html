@@ -262,7 +262,6 @@
                 const response = await fetch('/info', { method: 'POST' });
                 if (!response.ok) throw new Error('Failed to fetch server info');
                 const data = await response.json();
-                document.title = data.server_name;
                 document.getElementById('favicon').href = data.icon_path;
                 document.getElementById('logo').src = data.icon_path;
                 document.getElementById('server-name').textContent = data.server_name;

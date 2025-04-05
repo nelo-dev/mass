@@ -4,7 +4,7 @@
     <link rel="icon" type="image/png" id="favicon">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Update Profile Picture - mass</title>
+    <title>Update Profile Picture</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
     <style>
         body {
@@ -84,7 +84,6 @@
                 const response = await fetch('/info', { method: 'POST' });
                 if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
-                document.title = `Update Profile Picture - ${data.server_name}`;
                 document.getElementById('favicon').href = data.icon_path;
                 document.getElementById('logo').src = data.icon_path;
                 document.getElementById('server-name').textContent = data.server_name;
