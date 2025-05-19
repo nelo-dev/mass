@@ -25,7 +25,7 @@ A configuration file automatically in the executable directory **mass.cfg**. Fol
 - SSL key path (optional)
 - SSL certificate path (optional)
 - Database file-path (should be placed onto a fast storage medium, e.g. `ssd`, `nvme`):
--  Size of database cache in MegaByte (greatly improves speed on large archives):
+- Size of database cache in MegaByte (greatly improves speed on large archives):
 - Server Name
 - Server Icon (must be placed in folder public/resources)
 - Download Threads (concurrent media download count)
@@ -36,6 +36,7 @@ A configuration file automatically in the executable directory **mass.cfg**. Fol
 - Media Folder
 - Preview Folder (should be placed onto a fast storage medium, e.g. `ssd`, `nvme`)
 - Description Folder
+- Login Timeout
 
 ## API
 - With a **POST Request** to /upload a media can be uploaded to the archive server. An API Key is needed for that. And example request could look like this:

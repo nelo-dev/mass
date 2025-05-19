@@ -21,6 +21,7 @@ typedef struct App_t {
     char profile_path[256];
     int max_profile_size;
     int approval;
+    int login_timeout;
     char media_path[256];
     char preview_path[256];
     char description_path[256];

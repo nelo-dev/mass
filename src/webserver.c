@@ -167,7 +167,7 @@ static int handle_login(struct MHD_Connection *connection, RequestData *req_data
     (void)url;
     char *jwt_token = NULL;
     char cookie_hdr[4096] = {0};
-    char *response_json = login_user(app->db, req_data->buffer, app->jwt_secret, &jwt_token);
+    char *response_json = login_user(app->db, req_data->buffer, app->jwt_secret, &jwt_token, app->login_timeout);
     if (jwt_token) {
         snprintf(cookie_hdr, sizeof(cookie_hdr), "jwt=%s; HttpOnly; Secure; Path=/;", jwt_token);
         free(jwt_token);

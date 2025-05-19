@@ -263,7 +263,7 @@ char* register_user(sqlite3 *db, const char *input_json) {
     return strdup("{\"status\":\"success\", \"message\":\"User registered successfully\"}");
 }
 
-char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, char **jwt_token) {
+char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, char **jwt_token, int login_timeout) {
     json_error_t error;
     json_t *root = json_loads(input_json, 0, &error);
     if (!root)
@@ -311,7 +311,7 @@ char* login_user(sqlite3 *db, const char *input_json, const char *jwt_secret, ch
     }
 
     jwt_header_t header = { "HS256", "JWT" };
-    jwt_payload_t payload = { name_copy, "SubRoutine", time(NULL) + 3600 };
+    jwt_payload_t payload = { name_copy, "SubRoutine", time(NULL) + login_timeout };
 
     if (jwt_encode(jwt_secret, &header, &payload, jwt_token) != 0) {
         free(payload.sub);

@@ -51,6 +51,8 @@ void init_config()
     add_param(CFG_PATH, "preview_path", "data/preview");
     add_comment(CFG_PATH, "Description Folder");
     add_param(CFG_PATH, "description_path", "data/description");
+    add_comment(CFG_PATH, "Login Timeout (in seconds)");
+    add_param(CFG_PATH, "login_timeout", "3600");
 }
 
 App create_app()
@@ -100,6 +102,12 @@ App create_app()
     if (get_param_int(CFG_PATH, "dl_queue_size", &dl_queue_size) == -1 || dl_queue_size < 0) {
         fprintf(stderr, "Error: Invalid or missing dl_queue_size configuration. Using default value of 64.\n");
         dl_queue_size = 64;
+    }
+
+    app->login_timeout = 0;
+    if (get_param_int(CFG_PATH, "login_timeout", &app->login_timeout) == -1 || app->login_timeout <= 0) {
+        fprintf(stderr, "Error: Invalid or missing login_timeout configuration. Using default value of 3600 seconds.\n");
+        app->login_timeout = 3600;
     }
 
     app->dl = downloader_create(dl_thread_cnt, dl_queue_size);
