@@ -1342,9 +1342,25 @@ char* search_media(sqlite3* db, const char* json_input) {
     const char *search_type_str = json_string_value(search_type);
     const char *sort_str = json_string_value(sort);
     const char *order_str = json_string_value(order);
-    const char *order_by = (strcmp(sort_str, "media_id") == 0) ? "m.media_id" :
-                           (strcmp(sort_str, "score") == 0) ? "m.score" : "m.web_id";
-    const char *order_dir = (strcmp(order_str, "asc") == 0) ? "ASC" : "DESC";
+
+    // Compute order_clause
+    char *order_clause;
+    int need_free = 0;
+    if (strcmp(sort_str, "random") == 0) {
+        order_clause = "ORDER BY RANDOM()";
+    } else {
+        const char *order_by;
+        if (strcmp(sort_str, "media_id") == 0) {
+            order_by = "m.media_id";
+        } else if (strcmp(sort_str, "score") == 0) {
+            order_by = "m.score";
+        } else {
+            order_by = "m.web_id";  // default, includes "web_id" explicitly
+        }
+        const char *order_dir = (strcmp(order_str, "asc") == 0) ? "ASC" : "DESC";
+        order_clause = sqlite3_mprintf("ORDER BY %s %s", order_by, order_dir);
+        need_free = 1;
+    }
 
     // Prepare SQL query
     char *sql = NULL;
@@ -1356,6 +1372,7 @@ char* search_media(sqlite3* db, const char* json_input) {
             // Validate tags are strings
             for (size_t i = 0; i < num_tags; i++) {
                 if (!json_is_string(json_array_get(tags, i))) {
+                    if (need_free) sqlite3_free(order_clause);
                     json_decref(root);
                     return create_error_json("Tags must be strings");
                 }
@@ -1374,16 +1391,16 @@ char* search_media(sqlite3* db, const char* json_input) {
                 "WHERE t.tag_name IN (%s) "
                 "GROUP BY m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
                 "HAVING COUNT(DISTINCT t.tag_id) = %d "
-                "ORDER BY %s %s LIMIT %d OFFSET %d",
-                in_clause, num_tags, order_by, order_dir, limit_val, offset_val
+                "%s LIMIT %d OFFSET %d",
+                in_clause, num_tags, order_clause, limit_val, offset_val
             );
         } else {
             // No tags: return all media
             sql = sqlite3_mprintf(
                 "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
                 "FROM media m "
-                "ORDER BY %s %s LIMIT %d OFFSET %d",
-                order_by, order_dir, limit_val, offset_val
+                "%s LIMIT %d OFFSET %d",
+                order_clause, limit_val, offset_val
             );
         }
     } else if (strcmp(search_type_str, "title") == 0) {
@@ -1393,21 +1410,26 @@ char* search_media(sqlite3* db, const char* json_input) {
                 "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
                 "FROM media m "
                 "WHERE m.title LIKE ? "
-                "ORDER BY %s %s LIMIT %d OFFSET %d",
-                order_by, order_dir, limit_val, offset_val
+                "%s LIMIT %d OFFSET %d",
+                order_clause, limit_val, offset_val
             );
         } else {
             // No title: return all media
             sql = sqlite3_mprintf(
                 "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
                 "FROM media m "
-                "ORDER BY %s %s LIMIT %d OFFSET %d",
-                order_by, order_dir, limit_val, offset_val
+                "%s LIMIT %d OFFSET %d",
+                order_clause, limit_val, offset_val
             );
         }
     } else {
+        if (need_free) sqlite3_free(order_clause);
         json_decref(root);
         return create_error_json("Invalid search_type");
+    }
+
+    if (need_free) {
+        sqlite3_free(order_clause);
     }
 
     if (!sql) {
