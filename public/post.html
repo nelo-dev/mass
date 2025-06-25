@@ -146,11 +146,17 @@
             border: none;
         }
 
-        .creator-link {
-            text-decoration: none; /* Remove underline */
-            text-decoration:wavy;
-            color: #ffae00;
-            font-weight: bold;
+        .tag {
+            display: block;
+            color: #cbd4d8;
+            margin: 2px;
+            margin-left: 10px;
+            cursor: pointer; /* Add cursor to indicate clickability */
+            transition: background-color 0.2s ease; /* Smooth hover transition */
+        }
+
+        .tag:hover {
+            color: #ffffff;
         }
 
         #media-text {
@@ -190,7 +196,7 @@
         }
 
         .stats strong {
-            color: #0077ff;
+            color: #ffae00;;
         }
 
         /* Mobile Responsiveness */
@@ -335,7 +341,7 @@
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'media-stats'; // Add class for CSS
                 infoDiv.innerHTML = `
-                    <l class="stats">Creator: <a class="creator-link" href="/search?tags=creator:${encodeURIComponent(data.creator)}&search_type=tags&sort=web_id&order=desc&offset=0">${data.creator}</a></l> <br>
+                    <l class="stats">Creator: <strong>${data.creator}</strong></l> <br>
                     <l class="stats">Web ID: <strong>${data.web_id}</strong></l> <br>
                     <l class="stats">Media ID: <strong>${data.media_id}</strong></l> <br>
                     <l class="stats">Score: <strong>${data.score}</strong></l> <br>
@@ -355,6 +361,13 @@
                     const tagSpan = document.createElement('span');
                     tagSpan.className = 'tag';
                     tagSpan.textContent = tag;
+                    tagSpan.addEventListener('click', () => {
+                        let sortParam = 'score';
+                        if (tag.startsWith('creator:')) {
+                            sortParam = 'web_id';
+                        }
+                        window.location.href = `/search?tags=${encodeURIComponent(tag)}&search_type=tags&sort=${sortParam}&order=desc&offset=0`;
+                    });
                     tagsDiv.appendChild(tagSpan);
                 });
                 sidebar.appendChild(tagsDiv);
