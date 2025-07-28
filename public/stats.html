@@ -207,7 +207,7 @@
                     const rankCell = index === 0 ? `<td><img src="/resources/medal.png" alt="Gold Medal" class="medal-icon"></td>` : `<td>${index + 1}</td>`;
                     row.innerHTML = `
                         ${rankCell}
-                        <td><a class="creator-name" href="http://localhost:8080/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
+                        <td><a class="creator-name" href="/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
                         <td>${creator.total_score}</td>
                     `;
                     totalScoreTable.appendChild(row);
@@ -221,7 +221,7 @@
                     const rankCell = index === 0 ? `<td><img src="/resources/medal.png" alt="Gold Medal" class="medal-icon"></td>` : `<td>${index + 1}</td>`;
                     row.innerHTML = `
                         ${rankCell}
-                        <td><a class="creator-name" href="http://localhost:8080/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
+                        <td><a class="creator-name" href="/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
                         <td>${creator.avg_score.toFixed(0)}</td>
                     `;
                     avgScoreTable.appendChild(row);
