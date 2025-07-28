@@ -5,8 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>mass</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
     <style>
+        @font-face { font-family: 'Roboto'; src: url('/resources/fonts/roboto.ttf'); }
+
         body {
             font-family: 'Roboto', sans-serif;
             margin: 0;
@@ -309,8 +310,14 @@
             <div class="autocomplete-container">
                 <input type="text" name="tags" placeholder="Search by tags...">
             </div>
-            <button type="submit" style="padding: 8px 16px; background-color: #5555ff; border: none; color: #fff; cursor: pointer; width: 100%;">Search</button>
+            <button type="submit" style="background-color: #557dff; border: none; color: #fff; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center;">
+                <img src="/resources/search.png" alt="Search Icon" style="width: 15px; height: 15px; margin-right: 8px;">Search
+            </button>
+            <button type="button" onclick="window.location.href='/stats'" style="padding: 8px 16px;  border: none; color: #fff; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center;">
+                <img src="/resources/stats.png" alt="Stats Icon" style="width: 15px; height: 15px; margin-right: 8px;">Statistics
+            </button>
         </form>
+
         <div id="admin-section" class="admin-section" style="display: none;">
             <hr>
             <div id="button-container" class="button-container">

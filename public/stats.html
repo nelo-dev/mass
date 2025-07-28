@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" id="favicon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics</title>
+    <style>
+        @font-face { font-family: 'Roboto'; src: url('/resources/fonts/roboto.ttf'); }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background: #0e0e0e url('/resources/hexagon.png') repeat;
+            background-size: 74px 44px;
+            min-height: 100vh;
+            color: #f0f0f0;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #1a1a1a;
+            border-bottom: 1px solid #333;
+            box-sizing: border-box;
+        }
+
+        .top-bar .logo {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .top-bar .logo img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+
+        .top-bar .logo span {
+            font-size: 18px;
+        }
+
+        .top-bar .user-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .top-bar .user-info span {
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        .top-bar .user-info img#profile-pic {
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            transition: transform 0.6s ease-in-out;
+        }
+
+        .top-bar .user-info img#profile-pic:hover {
+            animation: pulse 1s infinite;
+        }
+
+        .top-bar .user-info button {
+            background: none;
+            border: none;
+            margin-left: 10px;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        .top-bar .user-info button img {
+            width: 32px;
+            height: 32px;
+        }
+
+        .visitor { color: #f0f0f0; }
+        .moderator { color: #5555ff; }
+        .admin { color: #ffaa00; }
+
+        .content {
+            margin-top: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stats-table {
+            width: 100%;
+            max-width: 800px;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        .stats-table th,
+        .stats-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+
+        .stats-table th {
+            background-color: #1a1a1a;
+            font-size: 16px;
+        }
+
+        .stats-table td {
+            font-size: 14px;
+        }
+
+        .stats-table-container {
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 20px;
+        }
+
+        .stats-table-container h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #f0f0f0;
+        }
+
+        .error-message {
+            color: #ff5555;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        .medal-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+
+        .creator-name {
+            cursor: pointer;
+            color: #f0f0f0;
+            text-decoration: none;
+        }
+
+        .creator-name:hover {
+            text-decoration: underline;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @media (max-width: 480px) {
+            .content {
+                padding: 10px;
+            }
+
+            .stats-table {
+                font-size: 14px;
+            }
+
+            .stats-table th,
+            .stats-table td {
+                padding: 8px;
+                font-size: 12px;
+            }
+
+            .stats-table-container h2 {
+                font-size: 18px;
+            }
+
+            .medal-icon {
+                width: 20px;
+                height: 20px;
+            }
+        }
+    </style>
+    <script>
+        async function updateTitleAndFavicon() {
+            try {
+                const response = await fetch('/info', { method: 'POST' });
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                document.getElementById('favicon').href = data.icon_path;
+                document.getElementById('logo').src = data.icon_path;
+                document.getElementById('server-name').textContent = data.server_name;
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        }
+
+        async function fetchAndDisplayStats() {
+            try {
+                const response = await fetch('/stats', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to fetch stats data');
+                const data = await response.json();
+
+                // Populate top creators by total score
+                const totalScoreTable = document.getElementById('top-creators-total-score').querySelector('tbody');
+                totalScoreTable.innerHTML = '';
+                data.top_creators_by_total_score.forEach((creator, index) => {
+                    const row = document.createElement('tr');
+                    const rankCell = index === 0 ? `<td><img src="/resources/medal.png" alt="Gold Medal" class="medal-icon"></td>` : `<td>${index + 1}</td>`;
+                    row.innerHTML = `
+                        ${rankCell}
+                        <td><a class="creator-name" href="http://localhost:8080/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
+                        <td>${creator.total_score}</td>
+                    `;
+                    totalScoreTable.appendChild(row);
+                });
+
+                // Populate top creators by average score
+                const avgScoreTable = document.getElementById('top-creators-avg-score').querySelector('tbody');
+                avgScoreTable.innerHTML = '';
+                data.top_creators_by_avg_score.forEach((creator, index) => {
+                    const row = document.createElement('tr');
+                    const rankCell = index === 0 ? `<td><img src="/resources/medal.png" alt="Gold Medal" class="medal-icon"></td>` : `<td>${index + 1}</td>`;
+                    row.innerHTML = `
+                        ${rankCell}
+                        <td><a class="creator-name" href="http://localhost:8080/search?tags=creator%3A${encodeURIComponent(creator.creator)}&search_type=tags&sort=score&order=desc&offset=0">${creator.creator}</a></td>
+                        <td>${creator.avg_score.toFixed(0)}</td>
+                    `;
+                    avgScoreTable.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.style.display = 'block';
+                errorMessage.textContent = 'Failed to load statistics. Please try again later.';
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                const response = await fetch("/user", { method: "POST" });
+                if (!response.ok) throw new Error("Failed to fetch user data");
+                const data = await response.json();
+                currentUser = data;
+                const userName = document.getElementById("user-name");
+                userName.textContent = data.name;
+                userName.className = data.role.toLowerCase();
+                document.getElementById("profile-pic").src = data.profile_picture;
+
+                document.querySelector('.logo').addEventListener('click', () => {
+                    window.location.href = '/';
+                });
+
+                // Fetch and display statistics
+                await fetchAndDisplayStats();
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                window.location.href = "/login";
+            }
+
+            updateTitleAndFavicon();
+        });
+
+        function logout() {
+            fetch("/logout", { method: "POST" })
+                .then(() => window.location.href = "/login")
+                .catch(error => console.error("Error logging out:", error));
+        }
+
+        function goToProfile() {
+            window.location.href = "/profile";
+        }
+    </script>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <img id="logo" alt="Server Logo">
+            <span id="server-name"></span>
+        </div>
+        <div class="user-info">
+            <span id="user-name"></span>
+            <img id="profile-pic" alt="Profile Picture" onclick="goToProfile()">
+            <button onclick="logout()">
+                <img id="logout-pic" src="/resources/logout.png" alt="Logout">
+            </button>
+        </div>
+    </div>
+    <div class="content">
+        <div class="stats-table-container">
+            <h2>Top Creators by Total Score</h2>
+            <table class="stats-table" id="top-creators-total-score">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Creator</th>
+                        <th>Total Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        <div class="stats-table-container">
+            <h2>Top Creators by Average Score</h2>
+            <table class="stats-table" id="top-creators-avg-score">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Creator</th>
+                        <th>Average Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        <div class="error-message" id="error-message"></div>
+    </div>
+</body>
+</html>

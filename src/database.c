@@ -9,6 +9,7 @@
 #include <openssl/hmac.h>
 #include <time.h>
 #include <regex.h>
+#include <math.h>
 
 #define SALT_SIZE 16
 #define HASH_SIZE 64
@@ -1654,4 +1655,80 @@ int get_total_media_count(sqlite3 *db) {
     }
 
     return count;
+}
+
+char* get_statistics(sqlite3 *db) {
+    json_t *root = json_object();
+    json_t *top_creators_count = json_array();
+    json_t *top_creators_avg = json_array();
+    
+    // Query for top 10 creators by total score
+    const char *sql_count = 
+        "SELECT creator, SUM(score) as total_score "
+        "FROM media "
+        "WHERE creator IS NOT NULL "
+        "GROUP BY creator "
+        "ORDER BY total_score DESC "
+        "LIMIT 25";
+    
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql_count, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        json_decref(root);
+        json_decref(top_creators_count);
+        json_decref(top_creators_avg);
+        return NULL;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json_t *creator_obj = json_object();
+        const char *creator = (const char *)sqlite3_column_text(stmt, 0);
+        int total_score = sqlite3_column_int(stmt, 1);
+        
+        json_object_set_new(creator_obj, "creator", json_string(creator));
+        json_object_set_new(creator_obj, "total_score", json_integer(total_score));
+        json_array_append_new(top_creators_count, creator_obj);
+    }
+    sqlite3_finalize(stmt);
+
+    // Query for top 10 creators by average score
+    const char *sql_avg = 
+        "SELECT creator, AVG(score) as avg_score "
+        "FROM media "
+        "WHERE creator IS NOT NULL "
+        "GROUP BY creator "
+        "HAVING COUNT(*) > 0 "
+        "ORDER BY avg_score DESC "
+        "LIMIT 25";
+    
+    rc = sqlite3_prepare_v2(db, sql_avg, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        json_decref(root);
+        json_decref(top_creators_count);
+        json_decref(top_creators_avg);
+        return NULL;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json_t *creator_obj = json_object();
+        const char *creator = (const char *)sqlite3_column_text(stmt, 0);
+        double avg_score = sqlite3_column_double(stmt, 1);
+        
+        json_object_set_new(creator_obj, "creator", json_string(creator));
+        json_object_set_new(creator_obj, "avg_score", json_real(avg_score));
+        json_array_append_new(top_creators_avg, creator_obj);
+    }
+    sqlite3_finalize(stmt);
+
+    // Add arrays to root object
+    json_object_set_new(root, "top_creators_by_total_score", top_creators_count);
+    json_object_set_new(root, "top_creators_by_avg_score", top_creators_avg);
+
+    // Convert to JSON string
+    char *json_str = json_dumps(root, JSON_ENCODE_ANY);
+    
+    // Clean up
+    json_decref(root);
+    
+    return json_str;
 }

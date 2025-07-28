@@ -324,6 +324,14 @@ static int handle_mediainfo(struct MHD_Connection *connection, RequestData *req_
     return ret;
 }
 
+static int handle_statistics(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    char *response_json = get_statistics(app->db);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
+    return ret;
+}
+
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/register.html");
@@ -367,6 +375,11 @@ static int handle_get_search(struct MHD_Connection *connection, RequestData *req
 static int handle_get_post(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)url;
     return serve_file(connection, "public/post.html");
+}
+
+static int handle_get_stats(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)req_data; (void)url;
+    return serve_file(connection, "public/stats.html");
 }
 
 /* ------------------------------------------------------------------
@@ -474,6 +487,7 @@ static const Route route_table[] = {
     {"POST", "/search", handle_search, true, 1, false},
     {"POST", "/autotag", handle_autotag, true, 1, false},
     {"POST", "/mediainfo", handle_mediainfo, true, 1, false},
+    {"POST", "/stats", handle_statistics, true, 1, false},
 
     /* GET routes */
     {"GET", "/register", handle_get_register, false, -1, false},
@@ -485,6 +499,7 @@ static const Route route_table[] = {
     {"GET", "/api", handle_get_api, true, 3, false},
     {"GET", "/search", handle_get_search, true, 1, false},
     {"GET", "/post", handle_get_post, true, 1, false},
+    {"GET", "/stats", handle_get_stats, true, 1, false},
 
     /* Static file routes */
     {"GET", "/resources/", handle_static_res, false, -1, true},

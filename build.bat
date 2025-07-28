@@ -12,7 +12,7 @@ for /r %%f in (*.c) do (
 
 :: Compile with GCC and link necessary libraries
 echo Compiling...
-gcc -Ofast !SRC_FILES! -o %OUTPUT% -lcurl -lmicrohttpd -lsqlite3 -ljansson -lssl -lcrypto -lregex
+gcc -O3 !SRC_FILES! -o %OUTPUT% -lcurl -lmicrohttpd -lsqlite3 -ljansson -lssl -lcrypto -lregex
 
 :: Check if compilation was successful
 if %errorlevel% neq 0 (

@@ -8,7 +8,7 @@ SRC_FILES=$(find . -type f -name "*.c")
 
 # Compile with GCC and link necessary libraries
 echo "Compiling..."
-gcc -Ofast $SRC_FILES -o $OUTPUT -lcurl -lmicrohttpd -lsqlite3 -ljansson -lssl -lcrypto
+gcc -O3 $SRC_FILES -o $OUTPUT -lcurl -lmicrohttpd -lsqlite3 -ljansson -lssl -lcrypto
 
 # Check if compilation was successful
 if [ $? -ne 0 ]; then

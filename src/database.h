@@ -31,5 +31,6 @@ char* search_media(sqlite3 *db, const char *input_json);
 char* autocomplete_tags(sqlite3 *db, const char *json_input);
 char* get_media_info(sqlite3 *db, const char *json_input);
 int get_total_media_count(sqlite3 *db);
+char* get_statistics(sqlite3 *db);
 
 #endif
