@@ -103,6 +103,7 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "CREATE INDEX IF NOT EXISTS idx_user_role_id ON user(role_id);",
         "CREATE INDEX IF NOT EXISTS idx_user_approved ON user(approved);"
         "CREATE INDEX IF NOT EXISTS idx_media_title ON media(title);"
+        "CREATE INDEX IF NOT EXISTS idx_media_creator_score ON media(creator, score);"
         "CREATE INDEX idx_tag_trgm ON tags USING GIN (tag_name gin_trgm_ops);"
     };
 
