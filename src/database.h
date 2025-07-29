@@ -27,10 +27,11 @@ char* create_api_key(sqlite3 *db, const char *request_username, const char *json
 char* destroy_api_key(sqlite3 *db, const char *json_input);
 char* get_all_api_keys(sqlite3 *db);
 char* insert_media(sqlite3* db, Downloader* dl, const char* input_json, const char* media_dir, const char* preview_dir, const char* description_dir);
-char* search_media(sqlite3 *db, const char *input_json);
+char* search_media(sqlite3* db, const char* username, const char* json_input);
 char* autocomplete_tags(sqlite3 *db, const char *json_input);
 char* get_media_info(sqlite3 *db, const char *json_input);
 int get_total_media_count(sqlite3 *db);
 char* get_statistics(sqlite3 *db);
+char *set_get_favorite_status(sqlite3 *db, const char *username, const char *input_json);
 
 #endif

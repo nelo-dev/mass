@@ -105,10 +105,15 @@
             margin-top: 10px;
         }
         .tag {
-            display:block;
+            display: block;
             color: #cbd4d8;
             margin: 2px;
             margin-left: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .tag:hover {
+            color: #ffffff;
         }
         .description {
             margin-top: 20px;
@@ -117,49 +122,23 @@
             border: 1px solid #333;
             max-width: 1200px;
         }
-
-        .description {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #08080877;
-            border: 1px solid #333;
-            max-width: 1200px;
-        }
-
         .description img {
             max-width: 30px;
         }
- 
         .description * {
             color: #f0f0f0;
         }
-
         img, video {
             max-width: 100%;
             height: auto;
             max-height: 800px;
         }
-
         iframe {
             max-width: 1220px;
             width: 100%;
             height: 1000px;
             border: none;
         }
-
-        .tag {
-            display: block;
-            color: #cbd4d8;
-            margin: 2px;
-            margin-left: 10px;
-            cursor: pointer; /* Add cursor to indicate clickability */
-            transition: background-color 0.2s ease; /* Smooth hover transition */
-        }
-
-        .tag:hover {
-            color: #ffffff;
-        }
-
         #media-text {
             white-space: pre-wrap;
             max-height: 500px;
@@ -177,9 +156,27 @@
             color: #f0f0f0;
             text-decoration: none;
             border-radius: 5px;
+            margin-left: 10px; /* Space between favorite button and download link */
         }
         #download-link:hover {
             background-color: rgb(0, 89, 255);
+        }
+        #favorite-button {
+            display: inline-block;
+            padding: 8px;
+            background-color: #3333338e;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        #favorite-button:hover {
+            background-color: #444;
+        }
+        #favorite-icon {
+            width: 30px;
+            height: 30px;
+            vertical-align: middle;
         }
 
         /** Footer Styles **/
@@ -191,13 +188,11 @@
             text-align: left;
             margin-left: 20px;
         }
-
         .stats {
             color: #f0f0f0;
         }
-
         .stats strong {
-            color: #ffae00;;
+            color: #ffae00;
         }
 
         /* Mobile Responsiveness */
@@ -205,29 +200,21 @@
             .main-content {
                 flex-direction: column;
             }
-
             .sidebar {
                 width: 100%;
                 border-right: none;
                 padding: 10px;
                 box-sizing: border-box;
             }
-
-            .tags {
+            .tags, .tags-title {
                 display: none;
             }
-
-            .tags-title {
-                display: none;
-            }
-
             img#media-image {
-                display: block; /* Prevents inline descender space */
+                display: block;
                 width: 100%;
-                margin: 0; /* Ensure no margins */
+                margin: 0;
             }
-
-            #download-link {
+            #download-link, #favorite-button {
                 display: block;
                 max-width: fit-content;
                 margin: 10px auto;
@@ -235,21 +222,16 @@
                 padding: 10px;
                 box-sizing: border-box;
                 text-align: center;
-                font-weight: bolder;
             }
-
-
             #media-title {
                 text-align: center;
             }
-
             .media-container {
                 margin: 0px;
             }
             img#media-image, #description {
                 width: 100%;
             }
-
             .description {
                 padding: 10px;
                 border-left: 0px;
@@ -258,12 +240,10 @@
                 box-sizing: border-box;
                 padding-bottom: 40px;
             }
-
             .footer {
                 text-align: center;
                 margin: 0px;
             }
-
             #media-text {
                 border-left: 0px;
                 border-right: 0px;
@@ -295,13 +275,35 @@
             return text.replace(/\[i\](.*?)\[\/i\]/gi, '<em>$1</em>');
         }
 
+        /** Toggle Favorite Status **/
+        async function toggleFavorite(mediaId) {
+            const favoriteIcon = document.getElementById('favorite-icon');
+            const currentStatus = favoriteIcon.src.includes('fav_true.png');
+            const setFav = currentStatus ? 0 : 1; // Toggle status
+            try {
+                const response = await fetch('/fav', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ media_id: parseInt(mediaId), set_fav: setFav })
+                });
+                if (!response.ok) throw new Error('Failed to toggle favorite status');
+                const data = await response.json();
+                favoriteIcon.src = data.is_fav ? '/resources/fav_true.png' : '/resources/fav_false.png';
+            } catch (error) {
+                console.error('Error toggling favorite status:', error);
+                alert('Failed to update favorite status');
+            }
+        }
+
         /** Main Logic **/
         document.addEventListener("DOMContentLoaded", async () => {
+            let userNameText; // Store username for favorite toggle
             // Fetch user data for top bar
             try {
                 const response = await fetch("/user", { method: "POST" });
                 if (!response.ok) throw new Error("Failed to fetch user data");
                 const data = await response.json();
+                userNameText = data.name; // Store username
                 const userName = document.getElementById("user-name");
                 userName.textContent = data.name;
                 userName.className = data.role.toLowerCase();
@@ -340,7 +342,7 @@
                 // Populate sidebar
                 const sidebar = document.querySelector('.sidebar');
                 const infoDiv = document.createElement('div');
-                infoDiv.className = 'media-stats'; // Add class for CSS
+                infoDiv.className = 'media-stats';
                 infoDiv.innerHTML = `
                     <l class="stats">Creator: <strong>${data.creator}</strong></l> <br>
                     <l class="stats">Web ID: <strong>${data.web_id}</strong></l> <br>
@@ -373,6 +375,25 @@
                 });
                 sidebar.appendChild(tagsDiv);
 
+                // Fetch initial favorite status
+                const favoriteIcon = document.getElementById('favorite-icon');
+                try {
+                    const favResponse = await fetch('/fav', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ media_id: parseInt(mediaId) })
+                    });
+                    if (!favResponse.ok) throw new Error('Failed to fetch favorite status');
+                    const favData = await favResponse.json();
+                    favoriteIcon.src = favData.is_fav ? '/resources/fav_true.png' : '/resources/fav_false.png';
+                } catch (error) {
+                    console.error('Error fetching favorite status:', error);
+                    favoriteIcon.src = '/resources/fav_false.png'; // Default to not favorited
+                }
+
+                // Set favorite button click handler
+                document.getElementById('favorite-button').addEventListener('click', () => toggleFavorite(mediaId));
+
                 // Display media based on type
                 const mediaDiv = document.getElementById('media');
                 const mediaType = getMediaType(data.path);
@@ -380,10 +401,9 @@
                     const img = document.createElement('img');
                     img.src = data.path;
                     img.alt = data.title;
-                    img.id = 'media-image'; // Add an ID to target it
+                    img.id = 'media-image';
                     mediaDiv.appendChild(img);
 
-                    // Add click listener to toggle fullscreen
                     img.addEventListener('click', () => {
                         if (!document.fullscreenElement) {
                             img.requestFullscreen().catch(err => {
@@ -406,7 +426,7 @@
                         .then(response => response.text())
                         .then(text => {
                             const parsedText = parseBBCodeToHTML(text);
-                            textDiv.innerHTML = parsedText; // use innerHTML here since we're injecting HTML
+                            textDiv.innerHTML = parsedText;
                         })
                         .catch(error => {
                             textDiv.textContent = 'Failed to load text content';
@@ -486,6 +506,7 @@
         <div class="media-container">
             <div id="media"></div>
             <h2 id="media-title"></h2>
+            <button id="favorite-button"><img id="favorite-icon" alt="Favorite"></button>
             <a id="download-link">Download</a>
             <div id="description" class="description"></div>
         </div>

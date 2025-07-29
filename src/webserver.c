@@ -302,7 +302,12 @@ static int handle_upload(struct MHD_Connection *connection, RequestData *req_dat
 
 static int handle_search(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)url;
-    char *response_json = search_media(app->db, req_data->buffer);
+
+    if (!req_data->jwt_payload) {
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+    }
+
+    char *response_json = search_media(app->db, req_data->jwt_payload->sub, req_data->buffer);
     int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
     free(response_json);
     return ret;
@@ -330,6 +335,17 @@ static int handle_statistics(struct MHD_Connection *connection, RequestData *req
     int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
     free(response_json);
     return ret;
+}
+
+static int handle_favorite(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
+    (void)url;
+    if (!req_data->jwt_payload) {
+        return send_json_response(connection, MHD_HTTP_UNAUTHORIZED, "{\"error\":\"Unauthorized\"}", NULL);
+    }
+
+    char *response_json = set_get_favorite_status(app->db, req_data->jwt_payload->sub, req_data->buffer);
+    int ret = send_json_response(connection, MHD_HTTP_OK, response_json, NULL);
+    free(response_json);
 }
 
 static int handle_get_register(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
@@ -488,6 +504,7 @@ static const Route route_table[] = {
     {"POST", "/autotag", handle_autotag, true, 1, false},
     {"POST", "/mediainfo", handle_mediainfo, true, 1, false},
     {"POST", "/stats", handle_statistics, true, 1, false},
+    {"POST", "/fav", handle_favorite, true, 1, false},
 
     /* GET routes */
     {"GET", "/register", handle_get_register, false, -1, false},

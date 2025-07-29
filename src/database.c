@@ -81,8 +81,7 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "PRIMARY KEY (media_id, tag_id), "
         "FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE, "
         "FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE);",
-
-        // Updated api_keys table with an active column
+        
         "CREATE TABLE IF NOT EXISTS api_keys ("
         "api_id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "user_id INTEGER NOT NULL, "
@@ -90,6 +89,13 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "active INTEGER DEFAULT 1, "
         "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
         "FOREIGN KEY(user_id) REFERENCES user(user_id) ON DELETE CASCADE);"
+
+        "CREATE TABLE IF NOT EXISTS user_favorites ("
+        "user_id INTEGER, "
+        "media_id INTEGER, "
+        "PRIMARY KEY (user_id, media_id), "
+        "FOREIGN KEY(user_id) REFERENCES user(user_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(media_id) REFERENCES media(media_id) ON DELETE CASCADE);"
     };
 
     // Index creation queries
@@ -104,6 +110,7 @@ sqlite3* create_and_open_db(const char *db_name, int cache_size_mb) {
         "CREATE INDEX IF NOT EXISTS idx_user_approved ON user(approved);"
         "CREATE INDEX IF NOT EXISTS idx_media_title ON media(title);"
         "CREATE INDEX IF NOT EXISTS idx_media_creator_score ON media(creator, score);"
+        "CREATE INDEX IF NOT EXISTS idx_user_favorites_user_id ON user_favorites(user_id);"
         "CREATE INDEX idx_tag_trgm ON tags USING GIN (tag_name gin_trgm_ops);"
     };
 
@@ -1290,7 +1297,7 @@ static char* create_error_json(const char* message) {
     return error_str;
 }
 
-char* search_media(sqlite3* db, const char* json_input) {
+char* search_media(sqlite3* db, const char* username, const char* json_input) {
     // Parse JSON input
     json_t *root;
     json_error_t error;
@@ -1309,6 +1316,7 @@ char* search_media(sqlite3* db, const char* json_input) {
     json_t *search_type = json_object_get(root, "search_type");
     json_t *sort = json_object_get(root, "sort");
     json_t *order = json_object_get(root, "order");
+    json_t *favorite = json_object_get(root, "favorite");
     json_t *limit_json = json_object_get(root, "limit");
     json_t *offset_json = json_object_get(root, "offset");
 
@@ -1344,6 +1352,27 @@ char* search_media(sqlite3* db, const char* json_input) {
     const char *search_type_str = json_string_value(search_type);
     const char *sort_str = json_string_value(sort);
     const char *order_str = json_string_value(order);
+    int is_favorite_filter = (favorite && json_is_string(favorite) && strcmp(json_string_value(favorite), "true") == 0);
+
+    // Get user_id from username if favorite filter is active
+    int user_id = -1;
+    if (is_favorite_filter) {
+        sqlite3_stmt *stmt;
+        int rc = sqlite3_prepare_v2(db, "SELECT user_id FROM user WHERE user_name = ?", -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            json_decref(root);
+            return create_error_json("Database error");
+        }
+        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_ROW) {
+            sqlite3_finalize(stmt);
+            json_decref(root);
+            return create_error_json("User not found");
+        }
+        user_id = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
 
     // Compute order_clause
     char *order_clause;
@@ -1357,7 +1386,7 @@ char* search_media(sqlite3* db, const char* json_input) {
         } else if (strcmp(sort_str, "score") == 0) {
             order_by = "m.score";
         } else {
-            order_by = "m.web_id";  // default, includes "web_id" explicitly
+            order_by = "m.web_id";  // default
         }
         const char *order_dir = (strcmp(order_str, "asc") == 0) ? "ASC" : "DESC";
         order_clause = sqlite3_mprintf("ORDER BY %s %s", order_by, order_dir);
@@ -1385,44 +1414,90 @@ char* search_media(sqlite3* db, const char* json_input) {
             for (size_t i = 1; i < num_tags; i++) {
                 strcat(in_clause, ",?");
             }
-            sql = sqlite3_mprintf(
-                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
-                "FROM media m "
-                "JOIN media_tags mt ON m.media_id = mt.media_id "
-                "JOIN tags t ON mt.tag_id = t.tag_id "
-                "WHERE t.tag_name IN (%s) "
-                "GROUP BY m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
-                "HAVING COUNT(DISTINCT t.tag_id) = %d "
-                "%s LIMIT %d OFFSET %d",
-                in_clause, num_tags, order_clause, limit_val, offset_val
-            );
+            if (is_favorite_filter) {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "JOIN media_tags mt ON m.media_id = mt.media_id "
+                    "JOIN tags t ON mt.tag_id = t.tag_id "
+                    "JOIN user_favorites uf ON m.media_id = uf.media_id "
+                    "WHERE t.tag_name IN (%s) AND uf.user_id = ? "
+                    "GROUP BY m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "HAVING COUNT(DISTINCT t.tag_id) = %d "
+                    "%s LIMIT %d OFFSET %d",
+                    in_clause, num_tags, order_clause, limit_val, offset_val
+                );
+            } else {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "JOIN media_tags mt ON m.media_id = mt.media_id "
+                    "JOIN tags t ON mt.tag_id = t.tag_id "
+                    "WHERE t.tag_name IN (%s) "
+                    "GROUP BY m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "HAVING COUNT(DISTINCT t.tag_id) = %d "
+                    "%s LIMIT %d OFFSET %d",
+                    in_clause, num_tags, order_clause, limit_val, offset_val
+                );
+            }
         } else {
-            // No tags: return all media
-            sql = sqlite3_mprintf(
-                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
-                "FROM media m "
-                "%s LIMIT %d OFFSET %d",
-                order_clause, limit_val, offset_val
-            );
+            if (is_favorite_filter) {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "JOIN user_favorites uf ON m.media_id = uf.media_id "
+                    "WHERE uf.user_id = ? "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            } else {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            }
         }
     } else if (strcmp(search_type_str, "title") == 0) {
         const char *title_str = json_string_value(title);
         if (strlen(title_str) > 0) {
-            sql = sqlite3_mprintf(
-                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
-                "FROM media m "
-                "WHERE m.title LIKE ? "
-                "%s LIMIT %d OFFSET %d",
-                order_clause, limit_val, offset_val
-            );
+            if (is_favorite_filter) {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "JOIN user_favorites uf ON m.media_id = uf.media_id "
+                    "WHERE m.title LIKE ? AND uf.user_id = ? "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            } else {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "WHERE m.title LIKE ? "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            }
         } else {
-            // No title: return all media
-            sql = sqlite3_mprintf(
-                "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
-                "FROM media m "
-                "%s LIMIT %d OFFSET %d",
-                order_clause, limit_val, offset_val
-            );
+            if (is_favorite_filter) {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "JOIN user_favorites uf ON m.media_id = uf.media_id "
+                    "WHERE uf.user_id = ? "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            } else {
+                sql = sqlite3_mprintf(
+                    "SELECT m.media_id, m.title, m.score, m.web_id, m.preview_path, m.path, m.creator "
+                    "FROM media m "
+                    "%s LIMIT %d OFFSET %d",
+                    order_clause, limit_val, offset_val
+                );
+            }
         }
     } else {
         if (need_free) sqlite3_free(order_clause);
@@ -1447,15 +1522,24 @@ char* search_media(sqlite3* db, const char* json_input) {
     }
     sqlite3_free(sql);
 
+    int bind_index = 1;
     if (strcmp(search_type_str, "tags") == 0 && json_array_size(tags) > 0) {
         for (size_t i = 0; i < json_array_size(tags); i++) {
             const char *tag = json_string_value(json_array_get(tags, i));
-            sqlite3_bind_text(stmt, i + 1, tag, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, bind_index++, tag, -1, SQLITE_STATIC);
+        }
+        if (is_favorite_filter) {
+            sqlite3_bind_int(stmt, bind_index++, user_id);
         }
     } else if (strcmp(search_type_str, "title") == 0 && strlen(json_string_value(title)) > 0) {
         char *like_str = sqlite3_mprintf("%%%s%%", json_string_value(title));
-        sqlite3_bind_text(stmt, 1, like_str, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, bind_index++, like_str, -1, SQLITE_TRANSIENT);
         sqlite3_free(like_str);
+        if (is_favorite_filter) {
+            sqlite3_bind_int(stmt, bind_index++, user_id);
+        }
+    } else if (is_favorite_filter) {
+        sqlite3_bind_int(stmt, bind_index++, user_id);
     }
 
     // Execute query and build JSON result
@@ -1732,4 +1816,79 @@ char* get_statistics(sqlite3 *db) {
     json_decref(root);
     
     return json_str;
+}
+
+char *set_get_favorite_status(sqlite3 *db, const char *username, const char *input_json) {
+    json_t *root, *result;
+    json_error_t error;
+    char *output_json = NULL;
+    sqlite3_stmt *stmt;
+    int rc, media_id, set_fav = -1, user_id = 0, is_fav = 0;
+
+    // Parse input JSON
+    root = json_loads(input_json, 0, &error);
+    if (!root) {
+        output_json = json_dumps(json_object(), JSON_COMPACT);
+        return output_json;
+    }
+
+    // Extract media_id and optional set_fav
+    json_unpack(root, "{s:i,s?:i}", "media_id", &media_id, "set_fav", &set_fav);
+    if (media_id <= 0) {
+        json_decref(root);
+        output_json = json_dumps(json_object(), JSON_COMPACT);
+        return output_json;
+    }
+
+    // Get user_id
+    rc = sqlite3_prepare_v2(db, "SELECT user_id FROM user WHERE user_name = ?;", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            user_id = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    if (user_id <= 0) {
+        json_decref(root);
+        output_json = json_dumps(json_object(), JSON_COMPACT);
+        return output_json;
+    }
+
+    // Handle set_fav if provided
+    if (set_fav >= 0) {
+        if (set_fav) {
+            rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO user_favorites (user_id, media_id) VALUES (?, ?);", -1, &stmt, NULL);
+        } else {
+            rc = sqlite3_prepare_v2(db, "DELETE FROM user_favorites WHERE user_id = ? AND media_id = ?;", -1, &stmt, NULL);
+        }
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, user_id);
+            sqlite3_bind_int(stmt, 2, media_id);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Check favorite status
+    rc = sqlite3_prepare_v2(db, "SELECT 1 FROM user_favorites WHERE user_id = ? AND media_id = ?;", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, user_id);
+        sqlite3_bind_int(stmt, 2, media_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            is_fav = 1;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    // Build response JSON
+    result = json_object();
+    json_object_set_new(result, "media_id", json_integer(media_id));
+    json_object_set_new(result, "is_fav", json_boolean(is_fav));
+    output_json = json_dumps(result, JSON_COMPACT);
+
+    json_decref(root);
+    json_decref(result);
+    return output_json;
 }
