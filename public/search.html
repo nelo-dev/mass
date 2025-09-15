@@ -85,7 +85,7 @@
     }
     .search-sidebar {
       padding: 15px;
-      width: 280px;
+      width: 250px;
       box-sizing: border-box;
       background-color: transparent;
       border-right: none;
@@ -128,11 +128,11 @@
       background-color: #5555ff;
     }
     .checkbox-group {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      display: flex;
+      flex-direction: column; /* stack vertically */
       gap: 5px;
       margin-top: 5px;
-      margin-bottom: 5px;
+      margin-bottom: 20px;
     }
     .checkbox-group label {
       display: flex;
@@ -145,7 +145,7 @@
       appearance: none;
       width: 16px;
       height: 16px;
-      border: 2px solid #5555ff;
+      border: 2px solid #557dff;
       background-color: #2a2a2a;
       border-radius: 3px;
       display: flex;
@@ -174,7 +174,7 @@
       margin-top: 10px;
       width: 100%;
       padding: 8px;
-      background-color: #5555ff;
+      background-color: #557dff;
       border: none;
       color: #fff;
       cursor: pointer;
@@ -213,14 +213,14 @@
       flex-wrap: wrap;
     }
     .pagination a {
-      color: #5555ff;
+      color: #557dff;
       text-decoration: none;
       padding: 5px 10px;
-      border: 1px solid #5555ff;
+      border: 1px solid #557dff;
       border-radius: 3px;
     }
     .pagination a.active {
-      background-color: #5555ff;
+      background-color: #557dff;
       color: #fff;
     }
     .grid {
@@ -559,8 +559,8 @@
         </div>
         <label>Order</label>
         <div class="checkbox-group">
-          <label><input type="radio" name="order" value="desc"> Desc.</label>
-          <label><input type="radio" name="order" value="asc"> Asc.</label>
+          <label><input type="radio" name="order" value="desc"> Descending</label>
+          <label><input type="radio" name="order" value="asc"> Ascending</label>
         </div>
         <div class="button-group">
           <button type="submit">Search</button>

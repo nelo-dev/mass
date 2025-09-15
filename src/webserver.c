@@ -169,7 +169,7 @@ static int handle_login(struct MHD_Connection *connection, RequestData *req_data
     char cookie_hdr[4096] = {0};
     char *response_json = login_user(app->db, req_data->buffer, app->jwt_secret, &jwt_token, app->login_timeout);
     if (jwt_token) {
-        snprintf(cookie_hdr, sizeof(cookie_hdr), "jwt=%s; HttpOnly; Secure; Path=/;", jwt_token);
+        snprintf(cookie_hdr, sizeof(cookie_hdr), "jwt=%s; HttpOnly; Secure; Path=/; SameSite=Strict;", jwt_token);
         free(jwt_token);
     }
     int ret = send_json_response(connection, MHD_HTTP_OK, response_json, jwt_token ? cookie_hdr : NULL);
@@ -191,7 +191,7 @@ static int handle_get_user(struct MHD_Connection *connection, RequestData *req_d
 static int handle_logout(struct MHD_Connection *connection, RequestData *req_data, App app, const char *url) {
     (void)req_data; (void)app; (void)url;
     const char *msg = "{\"success\":\"Logged out!\"}";
-    return send_json_response(connection, MHD_HTTP_OK, msg, "jwt=; HttpOnly; Secure; Path=/;");
+    return send_json_response(connection, MHD_HTTP_OK, msg, "jwt=; HttpOnly; Secure; Path=/; SameSite=Strict;");
 }
 
 static int handle_info(struct MHD_Connection *connection, RequestData *req_data, App_t *app, const char *url) {
@@ -660,7 +660,7 @@ static const Route *find_route(const char *method, const char *url) {
 /* ------------------------------------------------------------------
    WEB SERVER START/STOP
    ------------------------------------------------------------------ */
-struct MHD_Daemon *start_webserver(int port, char *key_path, char *crt_path, App app) {
+struct MHD_Daemon *start_webserver(int port, char *key_path, char *crt_path, int thread_cnt, App app) {
     struct MHD_Daemon *daemon = NULL;
     char *key = NULL, *crt = NULL;
     ssize_t key_size = 0, crt_size = 0;
@@ -676,14 +676,17 @@ struct MHD_Daemon *start_webserver(int port, char *key_path, char *crt_path, App
     }
 
     if (key && crt) {
-        printf("Starting server with SSL on \033[0;32mhttps://localhost:%d\033[0m\n", port);
+        printf("Starting server with SSL on \033[0;32mhttps://localhost:%d\033[0m with %d threads\n", port, thread_cnt);
         daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY | MHD_USE_TLS, port, NULL, NULL, &request_handler, app,
                                   MHD_OPTION_HTTPS_MEM_KEY, key,
                                   MHD_OPTION_HTTPS_MEM_CERT, crt,
+                                  MHD_OPTION_THREAD_POOL_SIZE, thread_cnt,
                                   MHD_OPTION_END);
     } else {
-        printf("Starting server without SSL on http://localhost:%d\n", port);
-        daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, port, NULL, NULL, &request_handler, app, MHD_OPTION_END);
+        printf("Starting server without SSL on http://localhost:%d with %d threads\n", port, thread_cnt);
+        daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, port, NULL, NULL, &request_handler, app,
+                                  MHD_OPTION_THREAD_POOL_SIZE, thread_cnt,
+                                  MHD_OPTION_END);
     }
 
     if (!daemon) fprintf(stderr, "Failed to start server\n");

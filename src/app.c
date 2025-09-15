@@ -7,6 +7,18 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+#include <windows.h> // Windows
+
+unsigned int get_thread_count() {
+#ifdef _WIN32
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    return sysinfo.dwNumberOfProcessors;
+#else
+    return sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+}
+
 void generate_random_string(char *str, size_t length) {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     size_t charset_size = sizeof(charset) - 1;
@@ -53,6 +65,8 @@ void init_config()
     add_param(CFG_PATH, "description_path", "data/description");
     add_comment(CFG_PATH, "Login Timeout (in seconds)");
     add_param(CFG_PATH, "login_timeout", "3600");
+    add_comment(CFG_PATH, "Webserver thread count. (0 for max threads available)");
+    add_param(CFG_PATH, "webserver_threads", "1");
 }
 
 App create_app()
@@ -157,10 +171,19 @@ App create_app()
         ssl_crt_found = true;
     }
 
+    int webserver_threads = 0;
+    if (get_param_int(CFG_PATH, "webserver_threads", &webserver_threads) == -1 || webserver_threads < 0) {
+        fprintf(stderr, "Error: Invalid or missing webserver_threads configuration. Using default value of 1 thread.\n");
+        webserver_threads = 1;
+    }
+
+    if (webserver_threads == 0)
+        webserver_threads = get_thread_count();
+
     if (ssl_key_found && ssl_crt_found) {
-        app->daemon = start_webserver(port, ssl_key_path, ssl_crt_path, app);
+        app->daemon = start_webserver(port, ssl_key_path, ssl_crt_path, webserver_threads, app);
     } else {
-        app->daemon = start_webserver(port, NULL, NULL, app);
+        app->daemon = start_webserver(port, NULL, NULL, webserver_threads, app);
     }
 
     return app;
