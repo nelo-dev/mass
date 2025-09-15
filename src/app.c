@@ -7,7 +7,9 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-#include <windows.h> // Windows
+#ifdef _WIN32
+#include <windows.h> // Windows-specific header
+#endif
 
 unsigned int get_thread_count() {
 #ifdef _WIN32
