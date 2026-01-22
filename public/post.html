@@ -462,6 +462,24 @@
                     const iframe = document.createElement('iframe');
                     iframe.src = data.path;
                     mediaDiv.appendChild(iframe);
+                } else if (mediaType === 'office') {
+                    // ── Quick Google Docs preview (works reasonably well for docx / odt / doc) ──
+                    const iframe = document.createElement('iframe');
+                    const encodedUrl = encodeURIComponent(data.path);           // important!
+                    iframe.src = `https://docs.google.com/gview?url=${encodedUrl}&embedded=true`;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '1000px';                             // or '90vh'
+                    iframe.style.border = 'none';
+                    mediaDiv.appendChild(iframe);
+
+                    // Fallback paragraph below the iframe
+                    const fallback = document.createElement('p');
+                    fallback.style.color = '#ffaa00';
+                    fallback.style.marginTop = '12px';
+                    fallback.innerHTML = 
+                        `Preview via Google Docs Viewer.<br>` +
+                        `If formatting looks broken or it doesn't load → use the <strong>Download</strong> button.`;
+                    mediaDiv.appendChild(fallback);
                 } else {
                     mediaDiv.textContent = 'Unsupported media type';
                 }
