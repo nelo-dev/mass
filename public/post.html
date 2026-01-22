@@ -510,10 +510,14 @@
         /** Determine Media Type **/
         function getMediaType(path) {
             const ext = path.split('.').pop().toLowerCase();
-            if (['png', 'jpg', 'jpeg', 'gif', 'bmp'].includes(ext)) return 'image';
-            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video';
-            if (ext === 'txt') return 'text';
+            if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(ext)) return 'image';
+            if (['mp4', 'webm', 'ogg', 'mov'].includes(ext)) return 'video';
+            if (ext === 'txt' || ext === 'md') return 'text';
             if (ext === 'pdf') return 'pdf';
+
+            // ── new quick & dirty office document support ──
+            if (['doc', 'docx', 'odt', 'rtf', 'pages'].includes(ext)) return 'office';
+
             return 'unknown';
         }
 
