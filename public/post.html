@@ -462,24 +462,6 @@
                     const iframe = document.createElement('iframe');
                     iframe.src = data.path;
                     mediaDiv.appendChild(iframe);
-                } else if (mediaType === 'office') {
-                    // ── Quick Google Docs preview (works reasonably well for docx / odt / doc) ──
-                    const iframe = document.createElement('iframe');
-                    const encodedUrl = encodeURIComponent(data.path);           // important!
-                    iframe.src = `https://docs.google.com/gview?url=${encodedUrl}&embedded=true`;
-                    iframe.style.width = '100%';
-                    iframe.style.height = '1000px';                             // or '90vh'
-                    iframe.style.border = 'none';
-                    mediaDiv.appendChild(iframe);
-
-                    // Fallback paragraph below the iframe
-                    const fallback = document.createElement('p');
-                    fallback.style.color = '#ffaa00';
-                    fallback.style.marginTop = '12px';
-                    fallback.innerHTML = 
-                        `Preview via Google Docs Viewer.<br>` +
-                        `If formatting looks broken or it doesn't load → use the <strong>Download</strong> button.`;
-                    mediaDiv.appendChild(fallback);
                 } else {
                     mediaDiv.textContent = 'Unsupported media type';
                 }
@@ -510,14 +492,10 @@
         /** Determine Media Type **/
         function getMediaType(path) {
             const ext = path.split('.').pop().toLowerCase();
-            if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(ext)) return 'image';
-            if (['mp4', 'webm', 'ogg', 'mov'].includes(ext)) return 'video';
-            if (ext === 'txt' || ext === 'md') return 'text';
+            if (['png', 'jpg', 'jpeg', 'gif', 'bmp'].includes(ext)) return 'image';
+            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video';
+            if (ext === 'txt') return 'text';
             if (ext === 'pdf') return 'pdf';
-
-            // ── new quick & dirty office document support ──
-            if (['doc', 'docx', 'odt', 'rtf', 'pages'].includes(ext)) return 'office';
-
             return 'unknown';
         }
 
